@@ -15,6 +15,7 @@ export function writeJson(file: string, value: unknown): void {
 
 const stateFile = (dir: string) => join(dir, ".builder", "state.json");
 const specFile = (dir: string) => join(dir, ".builder", "spec.json");
+const draftFile = (dir: string) => join(dir, ".builder", "draft.json");
 
 export function loadState(dir: string): State {
   return readJson<State>(stateFile(dir)) ?? {
@@ -25,3 +26,6 @@ export function loadState(dir: string): State {
 export const saveState = (dir: string, state: State) => writeJson(stateFile(dir), state);
 export const loadSpec = (dir: string) => readJson<Spec>(specFile(dir));
 export const saveSpec = (dir: string, spec: Spec) => writeJson(specFile(dir), spec);
+/** A draft waiting for approval. spec.json only ever holds what the user approved. */
+export const loadDraft = (dir: string) => readJson<Spec>(draftFile(dir));
+export const saveDraft = (dir: string, spec: Spec) => writeJson(draftFile(dir), spec);

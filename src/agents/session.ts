@@ -17,6 +17,7 @@ const NEEDS_PATH = ["read", "write", "edit"];
 export interface RoleSession {
   run(prompt: string): Promise<void>;
   sessionFile: string | undefined;
+  lastText(): string | undefined;
   dispose(): void;
 }
 
@@ -144,6 +145,7 @@ export async function createRoleSession(o: RoleSessionOptions): Promise<RoleSess
   return {
     run: (prompt) => runWithFallback(driver, prompt),
     sessionFile: session.sessionFile,
+    lastText: () => session.getLastAssistantText(),
     dispose: () => session.dispose(),
   };
 }
