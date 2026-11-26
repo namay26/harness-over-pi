@@ -1,0 +1,51 @@
+x-node: &node
+  image: node:24
+  user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+  working_dir: /app
+  init: true
+  environment:
+    HOME: /tmp
+    DATABASE_URL: postgres://app:app@db:5432/app
+    NEXT_TELEMETRY_DISABLED: "1"
+  volumes:
+    - ./app:/app
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "app", "-d", "app"]
+      interval: 2s
+      retries: 30
+  shell:
+    <<: *node
+    command: sleep infinity
+  web:
+    <<: *node
+    command: npx --no-install next start -H 0.0.0.0 -p 3000
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
+  e2e:
+    image: mcr.microsoft.com/playwright:v1.65.1-noble
+    profiles: [e2e]
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    working_dir: /e2e
+    init: true
+    environment:
+      HOME: /tmp
+      BASE_URL: http://web:3000
+    volumes:
+      - ./e2e:/e2e
+
+volumes:
+  pgdata:
