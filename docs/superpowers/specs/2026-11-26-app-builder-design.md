@@ -106,12 +106,3 @@ Node 24.11.1, pi 1.5.0, Docker running. pi lists two models, both through OpenRo
 
 ## Left to the builder
 Prompt wording, module layout, terminal formatting, timeouts.
-
-## Models and request budget
-Free OpenRouter models only: the key has no credit. Limits are 20 requests a minute and 50 a day.
-
-- Model is a setting per session. Start with `nvidia/nemotron-3-ultra-550b-a55b:free`, fall back to `google/gemma-4-31b-it:free`. Neither is tested yet.
-- TypeScript counts requests, shows the count, waits on per-minute limits, and stops cleanly at the daily limit so the run can resume from state. A fallback model does not help with the daily limit, which covers all free models.
-- Fix rounds send only the failing evidence. The exploratory pass is off by default.
-- The pipeline is developed against fake agent sessions, so debugging it costs no requests.
-- First task: check that pi can run the chosen model and that it calls tools correctly.
