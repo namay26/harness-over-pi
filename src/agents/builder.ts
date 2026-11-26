@@ -41,7 +41,7 @@ export function createBuilderAgent(o: {
   const appDir = join(o.projectDir, "app");
   const sourceHash = () => hashFolder(join(appDir, "src"));
 
-  return async ({ spec, failure }) => {
+  return async ({ spec, failure, changes }) => {
     const up = await exec(o.projectDir, ["up", "-d", "--wait", "shell"], { timeoutMs: 600_000 });
     if (up.code !== 0) throw new Error(`Could not start the sandbox:\n${up.output.slice(-2000)}`);
 
@@ -69,9 +69,12 @@ export function createBuilderAgent(o: {
         mkdirSync(dirname(marker), { recursive: true });
         writeFileSync(marker, before);
       }
+      const task = changes
+        ? `Change the existing app. What changed:\n${changes}\n\nThe full spec now:\n${describeSpec(spec)}\n\nCurrent files:\n`
+        : `Build this app.\n\n${describeSpec(spec)}\n\nThe starter files, so you do not need to read them:\n`;
       await session.run(interrupted
-        ? `You were interrupted partway. Do not read files again that you have already seen. Finish the app, then run the checks.\n\n${describeSpec(spec)}`
-        : `Build this app.\n\n${describeSpec(spec)}\n\nThe starter files, so you do not need to read them:\n${fileBlocks(appDir, STARTER_FILES)}`);
+        ? `You were interrupted partway. Do not read files again that you have already seen. Finish, then run the checks.\n\n${describeSpec(spec)}`
+        : task + fileBlocks(appDir, STARTER_FILES));
       if (sourceHash() === before) {
         await session.run("You have not changed any file in src/. Build the app now using the write and edit tools.");
         if (sourceHash() === before) {

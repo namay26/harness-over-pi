@@ -1,5 +1,6 @@
 // TypeScript owns the stages. Agents only draft and build.
 import type { Agents, UI } from "./agents/types.ts";
+import { diffSpec, renderChanges, type SpecDiff } from "./spec/diff.ts";
 import { pickQuestions } from "./spec/questions.ts";
 import { loadDraft, loadSpec, loadState, saveDraft, saveSpec, saveState } from "./state.ts";
 import type { Result, Spec, Stage, State } from "./types.ts";
@@ -13,6 +14,7 @@ export interface Deps {
   checks: (dir: string) => Promise<CheckResult>;
   tests: {
     missing(dir: string, spec: Spec): string[];
+    remove(dir: string, ids: string[]): void;
     run(dir: string, spec: Spec): Promise<Result[]>;
   };
 }
@@ -92,10 +94,13 @@ async function draft(deps: Deps, state: State, before: Stage): Promise<Spec | un
 async function approve(deps: Deps, state: State, first: Spec, before: Stage = state.stage): Promise<void> {
   let spec: Spec | undefined = first;
   while (spec) {
+    const previous = state.specVersion > 0 ? loadSpec(deps.dir) : null;
+    const diff = previous ? diffSpec(previous, spec) : null;
     saveDraft(deps.dir, spec);
     state.stage = "approval";
     saveState(deps.dir, state);
     deps.ui.say(renderSpec(spec));
+    if (diff) deps.ui.say(`Changes:\n${renderChanges(diff)}`);
 
     const answer = (await deps.ui.ask("Approve? Enter to approve, type a correction, or 'no' to stop", "yes")).trim();
     if (["no", "n"].includes(answer.toLowerCase())) {
@@ -103,10 +108,7 @@ async function approve(deps: Deps, state: State, first: Spec, before: Stage = st
       return;
     }
     if (["yes", "y", ""].includes(answer.toLowerCase())) {
-      saveSpec(deps.dir, spec);
-      state.specVersion++;
-      Object.assign(state, { stage: "build", round: 0, lastFailure: null, results: [] });
-      saveState(deps.dir, state);
+      accept(deps, state, spec, diff);
       deps.ui.say("Approved and saved. Building now; this takes a few minutes.");
       return build(deps, state);
     }
@@ -117,6 +119,14 @@ async function approve(deps: Deps, state: State, first: Spec, before: Stage = st
   }
 }
 
+function accept(deps: Deps, state: State, spec: Spec, diff: SpecDiff | null): void {
+  saveSpec(deps.dir, spec);
+  if (diff) deps.tests.remove(deps.dir, [...diff.changed, ...diff.removed].map((d) => d.id));
+  state.specVersion++;
+  Object.assign(state, { round: 0, lastFailure: null, results: [], changes: diff ? renderChanges(diff) : null });
+  enter(deps, state, "build");
+}
+
 /** Build, check and verify, sending failures back to the builder at most MAX_FIX_ROUNDS times. */
 async function build(deps: Deps, state: State): Promise<void> {
   const spec = loadSpec(deps.dir);
@@ -125,7 +135,7 @@ async function build(deps: Deps, state: State): Promise<void> {
 
   for (;;) {
     if (state.stage === "build") {
-      await deps.agents.build({ spec, failure: state.lastFailure });
+      await deps.agents.build({ spec, failure: state.lastFailure, changes: state.changes ?? null });
       enter(deps, state, "checks");
     }
     const failure = await judge(deps, state, spec);
@@ -168,7 +178,7 @@ async function judge(deps: Deps, state: State, spec: Spec): Promise<string | nul
   }
 
   const passed = state.results.every((r) => r.status === "pass");
-  if (passed) state.lastFailure = null;
+  if (passed) Object.assign(state, { lastFailure: null, changes: null });
   enter(deps, state, passed ? "done" : "verify");
   const headline = passed
     ? "Done. Every deliverable passed in a browser."

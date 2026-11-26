@@ -36,5 +36,7 @@ Deliverables
 Follow-ups
 - When a previous spec is given, keep the ids of unchanged deliverables, never renumber, and give a
   new id to anything new or changed in meaning.
+- Areas the approved spec already decided are not asked again: set builtDifferently to false
+  unless the latest message reopens that area.
 - If the latest message is only a question or small talk and asks for no change, reply in plain text
   without calling submit_spec.

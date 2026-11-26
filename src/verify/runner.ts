@@ -28,6 +28,13 @@ export function missingTests(e2eDir: string, spec: Spec): string[] {
   return spec.deliverables.map((d) => d.id).filter((id) => !bodies.some((body) => body.includes(`[${id}]`)));
 }
 
+/** Drops tests for deliverables that changed or were removed, so they get rewritten or forgotten. */
+export function removeTests(e2eDir: string, ids: string[]): void {
+  for (const source of testSources(e2eDir)) {
+    if (source.isTest && ids.some((id) => source.body.includes(`[${id}]`))) rmSync(join(e2eDir, source.name));
+  }
+}
+
 interface ReportSpec {
   title: string;
   tests: { status: string; results: { error?: { message?: string } }[] }[];

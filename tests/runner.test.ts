@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { lintTests, missingTests, runTests, toResults } from "../src/verify/runner.ts";
+import { lintTests, missingTests, removeTests, runTests, toResults } from "../src/verify/runner.ts";
 import { spec } from "./helpers.ts";
 
 const two = spec([], {
@@ -55,6 +55,15 @@ describe("lintTests", () => {
 describe("missingTests", () => {
   it("lists deliverables no test is tagged with", () => {
     expect(missingTests(e2e({ "a.spec.ts": GOOD }), two)).toEqual(["D2"]);
+  });
+});
+
+describe("removeTests", () => {
+  it("deletes only test files tagged with the given deliverables", () => {
+    const dir = e2e({ "d1.spec.ts": GOOD, "d2.spec.ts": GOOD.replace("[D1]", "[D2]") });
+    removeTests(dir, ["D1"]);
+    expect([existsSync(join(dir, "tests", "d1.spec.ts")), existsSync(join(dir, "tests", "d2.spec.ts"))])
+      .toEqual([false, true]);
   });
 });
 

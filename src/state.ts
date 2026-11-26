@@ -19,7 +19,7 @@ const draftFile = (dir: string) => join(dir, ".builder", "draft.json");
 
 export function loadState(dir: string): State {
   return readJson<State>(stateFile(dir)) ?? {
-    stage: "spec", round: 0, specVersion: 0, results: [], sessions: {}, messages: [], lastFailure: null,
+    stage: "spec", round: 0, specVersion: 0, results: [], sessions: {}, messages: [], lastFailure: null, changes: null,
   };
 }
 

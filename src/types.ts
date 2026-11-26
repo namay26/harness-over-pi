@@ -46,4 +46,5 @@ export interface State {
   sessions: Partial<Record<Role, string>>;
   messages: string[];
   lastFailure: string | null;
+  changes: string | null;
 }

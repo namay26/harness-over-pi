@@ -46,19 +46,26 @@ export async function startDb(dir: string): Promise<void> {
   await must(dir, ["up", "-d", "--wait", "db"]);
 }
 
-/** Restart the preview server and wait until it answers. */
-export async function restartWeb(dir: string): Promise<string> {
-  await must(dir, ["up", "-d", "--force-recreate", "web"]);
+/** Waits for the preview to answer; status 0 means it never did. */
+export async function waitForWeb(): Promise<{ url: string; status: number }> {
   const url = `http://localhost:${process.env.WEB_PORT ?? 3000}`;
   for (let attempt = 0; attempt < 60; attempt++) {
     try {
-      await fetch(url, { signal: AbortSignal.timeout(5000) });
-      return url;
+      const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+      return { url, status: response.status };
     } catch {
       await new Promise((r) => setTimeout(r, 1000));
     }
   }
-  throw new Error(`Preview did not answer at ${url}:\n${await logs(dir, "web", 40)}`);
+  return { url, status: 0 };
+}
+
+/** Restart the preview server and return its address. */
+export async function restartWeb(dir: string): Promise<string> {
+  await must(dir, ["up", "-d", "--force-recreate", "web"]);
+  const { url, status } = await waitForWeb();
+  if (status === 0) throw new Error(`Preview did not answer at ${url}:\n${await logs(dir, "web", 40)}`);
+  return url;
 }
 
 export async function logs(dir: string, service: string, lines: number): Promise<string> {

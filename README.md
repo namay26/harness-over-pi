@@ -28,7 +28,7 @@ TypeScript controls the stages and records the results. The agents only draft, b
 | Spec, questions and approval | Working |
 | Build, basic checks and local preview | Implemented. A full run has not yet finished with a real model |
 | Browser verification of each deliverable | Implemented. The test runner works in Docker. Test writing has not yet been run with a real model |
-| Follow-up changes to a built app | Partly in place, not tested |
+| Follow-up changes to a built app | Implemented. Not yet run with a real model |
 | Deployment to production | Not built yet |
 
 ## Setup
@@ -70,7 +70,8 @@ At the `>` prompt, describe your app, for example `build me a habit tracker`. Pr
 | Command | What it does |
 |---|---|
 | `continue` | Resumes a run that stopped, for example at the request limit |
-| `/status` | Shows the current stage and requests used today |
+| `/status` | Shows the stage, the result of each deliverable and requests used today |
+| `/preview` | Restarts the local preview of a built app |
 | `/exit` | Quits |
 
 Each project is stored in `workspaces/<name>/`:

@@ -54,14 +54,14 @@ function builderWith(writes: boolean[]) {
 describe("builder agent", () => {
   it("works only in app/ with file, shell and log tools, and gets the deliverables", async () => {
     const b = builderWith([true]);
-    await b.build({ spec: spec(), failure: null });
+    await b.build({ spec: spec(), failure: null, changes: null });
     expect(b.options()).toMatchObject({ role: "builder", root: join(b.dir, "app"), resume: true });
     expect(b.options().tools).toEqual(["read", "write", "edit", "bash", "app_logs"]);
     expect(b.prompts[0]).toContain("check off a habit");
   });
   it("includes the starter files so the model need not read them", async () => {
     const b = builderWith([true]);
-    await b.build({ spec: spec(), failure: null });
+    await b.build({ spec: spec(), failure: null, changes: null });
     expect(b.prompts[0]).toContain("STARTER_SCHEMA");
     expect(b.options().containerRoot).toBe("/app");
   });
@@ -83,20 +83,26 @@ describe("builder agent", () => {
         },
       }),
     });
-    await expect(build({ spec: spec(), failure: null })).rejects.toThrow("request limit");
+    await expect(build({ spec: spec(), failure: null, changes: null })).rejects.toThrow("request limit");
     interrupt = false;
-    await expect(build({ spec: spec(), failure: null })).resolves.toBeUndefined();
+    await expect(build({ spec: spec(), failure: null, changes: null })).resolves.toBeUndefined();
     expect(prompts).toHaveLength(2);
     expect(prompts[1]).toContain("interrupted");
   });
+  it("describes a follow-up as a change to the existing app", async () => {
+    const b = builderWith([true]);
+    await b.build({ spec: spec(), failure: null, changes: "added D4: export" });
+    expect(b.prompts[0]).toContain("Change the existing app");
+    expect(b.prompts[0]).toContain("added D4: export");
+  });
   it("reminds once, then fails, if it ends without changing the app", async () => {
     const b = builderWith([false, false]);
-    await expect(b.build({ spec: spec(), failure: null })).rejects.toThrow("without changing the app");
+    await expect(b.build({ spec: spec(), failure: null, changes: null })).rejects.toThrow("without changing the app");
     expect(b.prompts).toHaveLength(2);
   });
   it("passes the failure on a fix round and accepts a fix outside src", async () => {
     const b = builderWith([false]);
-    await b.build({ spec: spec(), failure: "tsc: Cannot find name 'x'" });
+    await b.build({ spec: spec(), failure: "tsc: Cannot find name 'x'", changes: null });
     expect(b.prompts).toHaveLength(1);
     expect(b.prompts[0]).toContain("Cannot find name 'x'");
   });
