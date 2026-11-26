@@ -3,3 +3,4 @@ node_modules/
 workspaces/
 .pi-home/
 .superpowers/
+config/models-store.json
