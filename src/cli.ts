@@ -1,5 +1,6 @@
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
+import { createBuilderAgent } from "./agents/builder.ts";
 import { createSpecAgent } from "./agents/spec.ts";
 import type { Agents, UI } from "./agents/types.ts";
 import { Budget, BudgetExhausted } from "./budget.ts";
@@ -7,6 +8,7 @@ import { config } from "./config.ts";
 import { handleMessage } from "./pipeline.ts";
 import { createProject } from "./sandbox/project.ts";
 import { loadState } from "./state.ts";
+import { runBasicChecks } from "./verify/basic.ts";
 
 if (!process.env.OPENROUTER_API_KEY) {
   console.error("OPENROUTER_API_KEY is not set. Put it in .env and start with: npm start -- <project>");
@@ -37,11 +39,12 @@ const ui: UI = {
 };
 
 const later = async (): Promise<never> => {
-  throw new Error("Building and verifying are not implemented yet.");
+  throw new Error("Browser verification is not implemented yet.");
 };
 const agents: Agents = {
   spec: createSpecAgent({ projectDir: dir, budget }),
-  build: later, writeTests: later, triage: later,
+  build: createBuilderAgent({ projectDir: dir, budget, onTool: (line) => console.log(`  · ${line}`) }),
+  writeTests: later, triage: later,
 };
 
 const used = () => `${budget.used()}/${budget.limit} model requests used today`;
@@ -56,7 +59,7 @@ for (;;) {
     continue;
   }
   try {
-    await handleMessage({ dir, agents, ui }, message);
+    await handleMessage({ dir, agents, ui, checks: runBasicChecks }, message);
   } catch (error) {
     console.log(`\n${error instanceof BudgetExhausted ? `${error.message} Type 'continue' after that.` : `Error: ${(error as Error).message}`}`);
   }

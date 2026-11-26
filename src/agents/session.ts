@@ -55,11 +55,21 @@ export async function runUntilTool<T>(
   return value;
 }
 
-export function guardExtension(o: { root: string; budget: Budget; onExhausted: (error: BudgetExhausted) => void }) {
+export function guardExtension(o: {
+  root: string;
+  /** Where `root` appears inside the container, so that paths copied from the shell still work. */
+  containerRoot?: string;
+  budget: Budget;
+  onExhausted: (error: BudgetExhausted) => void;
+}) {
   return (pi: ExtensionAPI) => {
     pi.on("tool_call", (event) => {
       if (!FILE_TOOLS.includes(event.toolName)) return;
       const input = event.input as { path?: unknown };
+      const inside = o.containerRoot;
+      if (inside && typeof input.path === "string" && (input.path === inside || input.path.startsWith(`${inside}/`))) {
+        input.path = `.${input.path.slice(inside.length)}`; // still checked below
+      }
       if (input.path === undefined && !NEEDS_PATH.includes(event.toolName)) return;
       if (typeof input.path !== "string" || !isAllowed(input.path, o.root)) {
         return { block: true, reason: `Refused: ${String(input.path)} is outside the project folder.` };
@@ -82,11 +92,14 @@ export interface RoleSessionOptions {
   projectDir: string;
   /** The only folder the file tools may touch. */
   root: string;
+  containerRoot?: string;
   systemPrompt: string;
   tools: string[];
   customTools: ToolDefinition<any, any>[];
   resume: boolean;
   budget: Budget;
+  /** One short line per tool call, so a long run is visibly doing something. */
+  onTool?: (line: string) => void;
 }
 
 export async function createRoleSession(o: RoleSessionOptions): Promise<RoleSession> {
@@ -113,7 +126,9 @@ export async function createRoleSession(o: RoleSessionOptions): Promise<RoleSess
     cwd: home, agentDir: PI_HOME, settingsManager,
     noExtensions: true, noSkills: true, noContextFiles: true, noPromptTemplates: true, noThemes: true,
     systemPrompt: o.systemPrompt,
-    extensionFactories: [guardExtension({ root: o.root, budget: o.budget, onExhausted: (e) => { exhausted = e; } })],
+    extensionFactories: [guardExtension({
+      root: o.root, containerRoot: o.containerRoot, budget: o.budget, onExhausted: (e) => { exhausted = e; },
+    })],
   });
   await resourceLoader.reload();
 
@@ -128,6 +143,13 @@ export async function createRoleSession(o: RoleSessionOptions): Promise<RoleSess
     cwd: home, agentDir: PI_HOME, modelRuntime, model: model(config.models[o.role]),
     settingsManager, resourceLoader, noTools: "builtin", tools: o.tools, customTools,
     sessionManager: o.resume ? SessionManager.continueRecent(home, sessionDir) : SessionManager.create(home, sessionDir),
+  });
+
+  session.subscribe((event) => {
+    if (event.type !== "tool_execution_start") return;
+    const args = event.args as { command?: string; path?: string } | undefined;
+    const detail = (args?.command ?? args?.path ?? "").replace(/\s+/g, " ").slice(0, 100);
+    o.onTool?.(`${event.toolName} ${detail}`.trim());
   });
 
   const driver: Driver = {

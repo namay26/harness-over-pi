@@ -2,6 +2,8 @@ import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
+import { guardExtension } from "../src/agents/session.ts";
+import { Budget } from "../src/budget.ts";
 import { isAllowed } from "../src/sandbox/guard.ts";
 
 let root: string;
@@ -29,4 +31,21 @@ describe("isAllowed", () => {
     "allows %s", (p) => expect(isAllowed(p, root)).toBe(true));
 
   it("allows an absolute path inside", () => expect(isAllowed(join(root, "src/a.ts"), root)).toBe(true));
+});
+
+describe("guardExtension with a container folder", () => {
+  function call(path: string) {
+    let handler!: (event: unknown) => { block?: boolean } | undefined;
+    const pi = { on: (name: string, fn: typeof handler) => { if (name === "tool_call") handler = fn; } };
+    guardExtension({ root, containerRoot: "/app", budget: new Budget(join(root, "u.json"), 1), onExhausted() {} })(pi as never);
+    const event = { toolName: "read", input: { path } };
+    const result = handler(event);
+    return { blocked: !!result?.block, path: event.input.path };
+  }
+  it("maps the container path of the app onto the host folder", () => {
+    expect(call("/app/src/a.ts")).toEqual({ blocked: false, path: "./src/a.ts" });
+    expect(call("/app")).toEqual({ blocked: false, path: "." });
+  });
+  it.each(["/app/../.env", "/app/link-to-outside/secret", "/apples/x", "/etc/passwd"])(
+    "still refuses %s", (p) => expect(call(p).blocked).toBe(true));
 });

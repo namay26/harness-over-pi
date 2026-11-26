@@ -3,24 +3,25 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Agents, SpecTurn, UI } from "../src/agents/types.ts";
 import type { Spec } from "../src/types.ts";
+import type { CheckResult } from "../src/verify/basic.ts";
 
 export const projectDir = () => mkdtempSync(join(tmpdir(), "pipe-"));
 
 /** Each spec call takes the next turn; the last one repeats. */
 export function fakeAgents(turns: (SpecTurn | Spec)[]) {
   const specCalls: { messages: string[]; previous: Spec | null }[] = [];
-  let builds = 0;
+  const buildInputs: { spec: Spec; failure: string | null }[] = [];
   const agents: Agents = {
     async spec(input) {
       specCalls.push(structuredClone(input));
       const turn = turns.length > 1 ? turns.shift()! : turns[0]!;
       return "idea" in turn ? { spec: turn } : turn;
     },
-    async build() { builds++; },
+    async build(input) { buildInputs.push(structuredClone(input)); },
     async writeTests() {},
     async triage() { return { testsChanged: false, notes: "" }; },
   };
-  return { agents, specCalls, builds: () => builds };
+  return { agents, specCalls, buildInputs, builds: () => buildInputs.length };
 }
 
 /** Answers in order; once they run out, behaves like pressing Enter. */
@@ -36,4 +37,14 @@ export function fakeUI(answers: string[] = []) {
     async confirm() { return true; },
   };
   return { ui, asked, said };
+}
+
+/** Each run takes the next result; the last one repeats. */
+export function fakeChecks(results: CheckResult[] = [{ ok: true, url: "http://localhost:3000" }]) {
+  let runs = 0;
+  const checks = async () => {
+    runs++;
+    return results.length > 1 ? results.shift()! : results[0]!;
+  };
+  return { checks, runs: () => runs };
 }
