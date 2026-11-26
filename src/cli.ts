@@ -2,13 +2,16 @@ import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { createBuilderAgent } from "./agents/builder.ts";
 import { createSpecAgent } from "./agents/spec.ts";
+import { createVerifierAgent } from "./agents/verifier.ts";
 import type { Agents, UI } from "./agents/types.ts";
 import { Budget, BudgetExhausted } from "./budget.ts";
 import { config } from "./config.ts";
 import { handleMessage } from "./pipeline.ts";
 import { createProject } from "./sandbox/project.ts";
 import { loadState } from "./state.ts";
+import type { Spec } from "./types.ts";
 import { runBasicChecks } from "./verify/basic.ts";
+import { missingTests, runTests } from "./verify/runner.ts";
 
 if (!process.env.OPENROUTER_API_KEY) {
   console.error("OPENROUTER_API_KEY is not set. Put it in .env and start with: npm start -- <project>");
@@ -38,13 +41,15 @@ const ui: UI = {
   },
 };
 
-const later = async (): Promise<never> => {
-  throw new Error("Browser verification is not implemented yet.");
-};
+const onTool = (line: string) => console.log(`  · ${line}`);
 const agents: Agents = {
   spec: createSpecAgent({ projectDir: dir, budget }),
-  build: createBuilderAgent({ projectDir: dir, budget, onTool: (line) => console.log(`  · ${line}`) }),
-  writeTests: later, triage: later,
+  build: createBuilderAgent({ projectDir: dir, budget, onTool }),
+  ...createVerifierAgent({ projectDir: dir, budget, onTool }),
+};
+const tests = {
+  missing: (project: string, spec: Spec) => missingTests(join(project, "e2e"), spec),
+  run: runTests,
 };
 
 const used = () => `${budget.used()}/${budget.limit} model requests used today`;
@@ -59,7 +64,7 @@ for (;;) {
     continue;
   }
   try {
-    await handleMessage({ dir, agents, ui, checks: runBasicChecks }, message);
+    await handleMessage({ dir, agents, ui, checks: runBasicChecks, tests }, message);
   } catch (error) {
     console.log(`\n${error instanceof BudgetExhausted ? `${error.message} Type 'continue' after that.` : `Error: ${(error as Error).message}`}`);
   }

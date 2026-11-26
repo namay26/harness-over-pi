@@ -57,6 +57,8 @@ export async function runUntilTool<T>(
 
 export function guardExtension(o: {
   root: string;
+  readable?: string[];
+  writable?: string[];
   /** Where `root` appears inside the container, so that paths copied from the shell still work. */
   containerRoot?: string;
   budget: Budget;
@@ -71,8 +73,8 @@ export function guardExtension(o: {
         input.path = `.${input.path.slice(inside.length)}`; // still checked below
       }
       if (input.path === undefined && !NEEDS_PATH.includes(event.toolName)) return;
-      if (typeof input.path !== "string" || !isAllowed(input.path, o.root)) {
-        return { block: true, reason: `Refused: ${String(input.path)} is outside the project folder.` };
+      if (typeof input.path !== "string" || !isAllowed(input.path, o.root, ["write", "edit"].includes(event.toolName) ? o.writable : o.readable)) {
+        return { block: true, reason: `Refused: ${String(input.path)} is outside the project folder you may use.` };
       }
     });
     pi.on("before_provider_request", async (_event, ctx) => {
@@ -90,8 +92,10 @@ export function guardExtension(o: {
 export interface RoleSessionOptions {
   role: Role;
   projectDir: string;
-  /** The only folder the file tools may touch. */
+  /** Relative paths resolve from here; file tools may touch only this folder unless narrowed below. */
   root: string;
+  readable?: string[];
+  writable?: string[];
   containerRoot?: string;
   systemPrompt: string;
   tools: string[];
@@ -127,7 +131,7 @@ export async function createRoleSession(o: RoleSessionOptions): Promise<RoleSess
     noExtensions: true, noSkills: true, noContextFiles: true, noPromptTemplates: true, noThemes: true,
     systemPrompt: o.systemPrompt,
     extensionFactories: [guardExtension({
-      root: o.root, containerRoot: o.containerRoot, budget: o.budget, onExhausted: (e) => { exhausted = e; },
+      root: o.root, readable: o.readable, writable: o.writable, containerRoot: o.containerRoot, budget: o.budget, onExhausted: (e) => { exhausted = e; },
     })],
   });
   await resourceLoader.reload();

@@ -1,0 +1,86 @@
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { lintTests, missingTests, runTests, toResults } from "../src/verify/runner.ts";
+import { spec } from "./helpers.ts";
+
+const two = spec([], {
+  deliverables: ["D1", "D2"].map((id) => ({ id, does: id, source: "said" as const, check: id })),
+});
+const run = (title: string, status: string, message?: string) => ({
+  title, tests: [{ status, results: [{ error: message ? { message } : undefined }] }],
+});
+const report = (...specs: unknown[]) => ({ suites: [{ suites: [{ specs }] }] });
+
+function e2e(files: Record<string, string>) {
+  const dir = mkdtempSync(join(tmpdir(), "e2e-"));
+  mkdirSync(join(dir, "tests"));
+  for (const [name, body] of Object.entries(files)) writeFileSync(join(dir, "tests", name), body);
+  return dir;
+}
+const GOOD = 'import { expect, test } from "../fixtures";\ntest("[D1] a", async () => { expect(1).toBe(1); });\n';
+
+describe("toResults", () => {
+  const statusOf = (r: unknown) => toResults(r, two).map((x) => x.status);
+  it("marks a deliverable without a test as untested", () => {
+    expect(statusOf(report(run("[D1] a", "expected")))).toEqual(["pass", "untested"]);
+  });
+  it("fails on any failing test and keeps the error", () => {
+    const [d1] = toResults(report(run("[D1] a", "expected"), run("[D1] b", "unexpected", "no such button")), two);
+    expect(d1).toMatchObject({ status: "fail", evidence: expect.stringContaining("no such button") });
+  });
+  it("treats skipped as untested and flaky as failed", () => {
+    expect(statusOf(report(run("[D1] a", "skipped"), run("[D2] b", "flaky")))).toEqual(["untested", "fail"]);
+  });
+  it("reports load errors as evidence for untested deliverables", () => {
+    const [d1] = toResults({ suites: [], errors: [{ message: "SyntaxError in d1.spec.ts" }] }, two);
+    expect(d1).toMatchObject({ status: "untested", evidence: expect.stringContaining("SyntaxError") });
+  });
+});
+
+describe("lintTests", () => {
+  it("accepts a normal test", () => expect(lintTests(e2e({ "a.spec.ts": GOOD }))).toEqual([]));
+  it.each(["test.skip(", "test.fixme(", "test.only(", "test.fail(", "test.describe.skip("])("flags %s", (call) => {
+    expect(lintTests(e2e({ "a.spec.ts": `${GOOD}${call}"x");` }))).not.toEqual([]);
+  });
+  it("flags bypassing the shared fixtures", () => {
+    expect(lintTests(e2e({ "a.spec.ts": GOOD.replace("../fixtures", "@playwright/test") }))).not.toEqual([]);
+  });
+  it("flags a file that asserts nothing", () => {
+    expect(lintTests(e2e({ "a.spec.ts": GOOD.replace("expect(1).toBe(1);", "") }))).not.toEqual([]);
+  });
+});
+
+describe("missingTests", () => {
+  it("lists deliverables no test is tagged with", () => {
+    expect(missingTests(e2e({ "a.spec.ts": GOOD }), two)).toEqual(["D2"]);
+  });
+});
+
+describe("runTests", () => {
+  const project = (files: Record<string, string>) => {
+    const dir = mkdtempSync(join(tmpdir(), "proj-"));
+    mkdirSync(join(dir, "e2e", "tests"), { recursive: true });
+    mkdirSync(join(dir, "e2e", "node_modules"));
+    for (const [name, body] of Object.entries(files)) writeFileSync(join(dir, "e2e", "tests", name), body);
+    return dir;
+  };
+
+  it("runs nothing and reports why when the tests break the rules", async () => {
+    let calls = 0;
+    const results = await runTests(project({ "a.spec.ts": `${GOOD}test.only("x");` }), two,
+      async () => { calls++; return { code: 0, output: "" }; });
+    expect(calls).toBe(0);
+    expect(results.map((r) => r.status)).toEqual(["untested", "untested"]);
+    expect(results[0]!.evidence).toContain("only");
+  });
+  it("never reads a report left over from an earlier run", async () => {
+    const dir = project({ "a.spec.ts": GOOD });
+    const stale = join(dir, "e2e", "results.json");
+    writeFileSync(stale, JSON.stringify(report(run("[D1] a", "expected"))));
+    await expect(runTests(dir, two, async () => ({ code: 1, output: "browser crashed" })))
+      .rejects.toThrow("browser crashed");
+    expect(existsSync(stale)).toBe(false);
+  });
+});

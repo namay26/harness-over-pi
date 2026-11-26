@@ -16,9 +16,10 @@ The project focuses on two problems:
 3. **Approval.** You approve the draft or type a correction. Nothing is built before approval.
 4. **Build.** A second agent writes the app inside a Docker sandbox.
 5. **Checks.** Plain code installs packages, applies the database schema, checks types, builds the app and loads the home page. Failures go back to the builder, up to 3 times.
-6. **Preview.** The app runs at http://localhost:3000.
+6. **Verification.** A third agent, which cannot change the app, writes a browser test for each deliverable. TypeScript runs the tests and records each one as pass, fail or untested. Failures go back to the builder.
+7. **Preview.** The app runs at http://localhost:3000.
 
-TypeScript controls the stages and records the results. The agents only draft and build.
+TypeScript controls the stages and records the results. The agents only draft, build and write tests.
 
 ## Status
 
@@ -26,7 +27,7 @@ TypeScript controls the stages and records the results. The agents only draft an
 |---|---|
 | Spec, questions and approval | Working |
 | Build, basic checks and local preview | Implemented. A full run has not yet finished with a real model |
-| Browser verification of each deliverable | Not built yet. Every deliverable is reported as untested |
+| Browser verification of each deliverable | Implemented. The test runner works in Docker. Test writing has not yet been run with a real model |
 | Follow-up changes to a built app | Partly in place, not tested |
 | Deployment to production | Not built yet |
 

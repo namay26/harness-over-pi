@@ -39,13 +39,15 @@ function realTarget(path: string, depth = 0): string {
   }
 }
 
-export function isAllowed(path: string, root: string): boolean {
+/** True if the path, resolved from `base`, ends up inside one of the `within` folders. */
+export function isAllowed(path: string, base: string, within: string[] = [base]): boolean {
   try {
-    const realRoot = realpathSync(root);
-    return spellings(asPiSees(path, root)).every((candidate) => {
-      const rel = relative(realRoot, realTarget(candidate));
+    const folders = within.map((folder) => realTarget(resolve(folder)));
+    const inside = (target: string) => folders.some((folder) => {
+      const rel = relative(folder, target);
       return rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
     });
+    return spellings(asPiSees(path, realpathSync(base))).every((candidate) => inside(realTarget(candidate)));
   } catch {
     return false;
   }

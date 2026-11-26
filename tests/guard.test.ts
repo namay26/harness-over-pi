@@ -49,3 +49,12 @@ describe("guardExtension with a container folder", () => {
   it.each(["/app/../.env", "/app/link-to-outside/secret", "/apples/x", "/etc/passwd"])(
     "still refuses %s", (p) => expect(call(p).blocked).toBe(true));
 });
+
+describe("separate read and write folders", () => {
+  it("limits a path to the given folders, resolved from the base", () => {
+    const within = [join(root, "src")];
+    expect(isAllowed("src/a.ts", root, within)).toBe(true);
+    expect(isAllowed("other.ts", root, within)).toBe(false);
+    expect(isAllowed("src/../other.ts", root, within)).toBe(false);
+  });
+});

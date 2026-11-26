@@ -1,12 +1,11 @@
-import { type BashOperations, createBashToolDefinition, defineTool } from "@earendil-works/pi-coding-agent";
-import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
-import { Type } from "typebox";
+import { type BashOperations, createBashToolDefinition } from "@earendil-works/pi-coding-agent";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { Budget } from "../budget.ts";
+import { hashFolder } from "../files.ts";
 import { compose } from "../sandbox/docker.ts";
-import type { Spec } from "../types.ts";
 import { createRoleSession } from "./session.ts";
+import { appLogsTool, describeSpec, fileBlocks } from "./shared.ts";
 import type { Agents } from "./types.ts";
 
 const PROMPT = readFileSync(new URL("./prompts/builder.md", import.meta.url), "utf8");
@@ -31,37 +30,6 @@ export function containerBash(dir: string, exec = compose): BashOperations {
   };
 }
 
-/** Fingerprint of the app's source, to catch a builder that stops without building anything. */
-export function sourceHash(appDir: string): string {
-  const src = join(appDir, "src");
-  const hash = createHash("sha256");
-  if (!existsSync(src)) return "";
-  const files = readdirSync(src, { recursive: true, withFileTypes: true })
-    .filter((entry) => entry.isFile())
-    .map((entry) => join(entry.parentPath, entry.name))
-    .sort();
-  for (const file of files) hash.update(relative(appDir, file)).update(readFileSync(file));
-  return hash.digest("hex");
-}
-
-function starter(appDir: string): string {
-  return STARTER_FILES.filter((file) => existsSync(join(appDir, file)))
-    .map((file) => `<file path="${file}">\n${readFileSync(join(appDir, file), "utf8")}</file>`)
-    .join("\n");
-}
-
-function describe(spec: Spec): string {
-  return [
-    `Idea: ${spec.idea}`,
-    "Deliverables:",
-    ...spec.deliverables.map((d) => `- ${d.id}: ${d.does}\n  check: ${d.check}`),
-    `Decisions: ${spec.areas.map((a) => `${a.area}: ${a.guess}`).join("; ")}`,
-    `People sign in: ${spec.needsAccounts ? "yes" : "no"}`,
-    `Not building: ${spec.notBuilding.join(", ") || "-"}`,
-    `Constraints: ${spec.constraints.join(", ") || "-"}`,
-  ].join("\n");
-}
-
 export function createBuilderAgent(o: {
   projectDir: string;
   budget: Budget;
@@ -71,6 +39,7 @@ export function createBuilderAgent(o: {
 }): Agents["build"] {
   const exec = o.exec ?? compose;
   const appDir = join(o.projectDir, "app");
+  const sourceHash = () => hashFolder(join(appDir, "src"));
 
   return async ({ spec, failure }) => {
     const up = await exec(o.projectDir, ["up", "-d", "--wait", "shell"], { timeoutMs: 600_000 });
@@ -79,14 +48,7 @@ export function createBuilderAgent(o: {
     const bash = createBashToolDefinition(appDir, {
       operations: containerBash(o.projectDir, exec), exposeSessionEnvironment: false,
     });
-    const appLogs = defineTool({
-      name: "app_logs", label: "App logs", description: "Show the last lines of the preview server log.",
-      parameters: Type.Object({ lines: Type.Optional(Type.Number()) }),
-      async execute(_id, { lines }) {
-        const { output } = await exec(o.projectDir, ["logs", "--no-color", "--tail", String(lines ?? 60), "web"]);
-        return { content: [{ type: "text", text: output.slice(-8000) || "(no log yet)" }], details: {} };
-      },
-    });
+    const appLogs = appLogsTool(o.projectDir, exec);
 
     const session = await (o.createSession ?? createRoleSession)({
       role: "builder", projectDir: o.projectDir, root: appDir, containerRoot: "/app", systemPrompt: PROMPT,
@@ -96,23 +58,23 @@ export function createBuilderAgent(o: {
     try {
       if (failure) {
         await session.run(
-          `A check failed after your last change. Find the cause and fix it.\n\n${failure}\n\nThe spec:\n${describe(spec)}`);
+          `A check failed after your last change. Find the cause and fix it.\n\n${failure}\n\nThe spec:\n${describeSpec(spec)}`);
         return;
       }
       // The baseline outlives an interrupted run, so work done before the interruption still counts.
       const marker = join(o.projectDir, ".builder", "build-baseline");
       const interrupted = existsSync(marker);
-      const before = interrupted ? readFileSync(marker, "utf8") : sourceHash(appDir);
+      const before = interrupted ? readFileSync(marker, "utf8") : sourceHash();
       if (!interrupted) {
         mkdirSync(dirname(marker), { recursive: true });
         writeFileSync(marker, before);
       }
       await session.run(interrupted
-        ? `You were interrupted partway. Do not read files again that you have already seen. Finish the app, then run the checks.\n\n${describe(spec)}`
-        : `Build this app.\n\n${describe(spec)}\n\nThe starter files, so you do not need to read them:\n${starter(appDir)}`);
-      if (sourceHash(appDir) === before) {
+        ? `You were interrupted partway. Do not read files again that you have already seen. Finish the app, then run the checks.\n\n${describeSpec(spec)}`
+        : `Build this app.\n\n${describeSpec(spec)}\n\nThe starter files, so you do not need to read them:\n${fileBlocks(appDir, STARTER_FILES)}`);
+      if (sourceHash() === before) {
         await session.run("You have not changed any file in src/. Build the app now using the write and edit tools.");
-        if (sourceHash(appDir) === before) {
+        if (sourceHash() === before) {
           throw new Error("The builder finished without changing the app. Try again or change the model.");
         }
       }
