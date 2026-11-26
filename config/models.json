@@ -1,0 +1,13 @@
+{
+  "providers": {
+    "openrouter": {
+      "apiKey": "$OPENROUTER_API_KEY",
+      "models": [
+        { "id": "nvidia/nemotron-3-ultra-550b-a55b:free", "reasoning": true, "contextWindow": 1000000,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 } },
+        { "id": "google/gemma-4-31b-it:free", "reasoning": true, "contextWindow": 262144,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 } }
+      ]
+    }
+  }
+}
