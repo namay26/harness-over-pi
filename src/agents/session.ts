@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url";
 import { Budget, BudgetExhausted } from "../budget.ts";
 import { config, type Role } from "../config.ts";
 import { isAllowed } from "../sandbox/guard.ts";
+import { RunLimits } from "./limits.ts";
+import { watchStall } from "./watchdog.ts";
 
 const REPO = fileURLToPath(new URL("../..", import.meta.url));
 const PI_HOME = join(REPO, ".pi-home");
@@ -39,6 +41,8 @@ export async function runWithFallback(driver: Driver, prompt: string, wait = sle
     await wait(30_000);
     await driver.useFallback();
     error = check(await driver.prompt("The last request was throttled. Continue the task where you left off."));
+  } else if (error?.startsWith("stalled")) {
+    error = check(await driver.prompt("The last request got no reply. Continue the task where you left off."));
   }
   if (error) throw new Error(`Model request failed: ${error.slice(0, 500)}`);
 }
@@ -57,25 +61,47 @@ export async function runUntilTool<T>(
 
 export function guardExtension(o: {
   root: string;
+  readable?: string[];
+  writable?: string[];
   /** Where `root` appears inside the container, so that paths copied from the shell still work. */
   containerRoot?: string;
   budget: Budget;
+  limits?: RunLimits;
   onExhausted: (error: BudgetExhausted) => void;
+  onCapped?: () => void;
 }) {
+  const limits = o.limits ?? new RunLimits(Number.POSITIVE_INFINITY);
+
+  /** Why a file call must be refused, if it must. */
+  function refusal(toolName: string, input: { path?: unknown }): string | undefined {
+    if (!FILE_TOOLS.includes(toolName)) return;
+    if (input.path === undefined && !NEEDS_PATH.includes(toolName)) return;
+    const inside = o.containerRoot;
+    if (inside && typeof input.path === "string" && (input.path === inside || input.path.startsWith(`${inside}/`))) {
+      input.path = `.${input.path.slice(inside.length)}`; // still checked below
+    }
+    const folders = ["write", "edit"].includes(toolName) ? o.writable : o.readable;
+    if (typeof input.path !== "string" || !isAllowed(input.path, o.root, folders)) {
+      return `Refused: ${String(input.path)} is outside the project folder you may use.`;
+    }
+  }
+
   return (pi: ExtensionAPI) => {
     pi.on("tool_call", (event) => {
-      if (!FILE_TOOLS.includes(event.toolName)) return;
       const input = event.input as { path?: unknown };
-      const inside = o.containerRoot;
-      if (inside && typeof input.path === "string" && (input.path === inside || input.path.startsWith(`${inside}/`))) {
-        input.path = `.${input.path.slice(inside.length)}`; // still checked below
-      }
-      if (input.path === undefined && !NEEDS_PATH.includes(event.toolName)) return;
-      if (typeof input.path !== "string" || !isAllowed(input.path, o.root)) {
-        return { block: true, reason: `Refused: ${String(input.path)} is outside the project folder.` };
-      }
+      const reason = refusal(event.toolName, input);
+      // Reading again or re-running a check is normal; the same write or any refusal repeated is a loop.
+      const risky = reason !== undefined || ["write", "edit"].includes(event.toolName);
+      const loop = risky && limits.isLoop(event.toolName, input, reason !== undefined);
+      if (reason) return { block: true, reason, terminate: loop };
+      if (loop) return { block: true, reason: "You already did exactly this. Stop.", terminate: true };
     });
     pi.on("before_provider_request", async (_event, ctx) => {
+      if (!limits.takeRequest()) {
+        o.onCapped?.();
+        ctx.abort();
+        return;
+      }
       try {
         await o.budget.take();
       } catch (error) {
@@ -87,17 +113,49 @@ export function guardExtension(o: {
   };
 }
 
+const FILE_TOOL_FACTORIES: Record<string, (root: string) => ToolDefinition<any, any>> = {
+  read: createReadToolDefinition,
+  write: createWriteToolDefinition,
+  edit: createEditToolDefinition,
+};
+
+/** pi resolves paths from the session's cwd, so each file tool is handed `root` as its cwd. */
+export function rootedFileTools(names: string[], root: string, finished?: () => boolean): ToolDefinition<any, any>[] {
+  return names.flatMap((name) => {
+    const tool = FILE_TOOL_FACTORIES[name]?.(root);
+    if (!tool) return [];
+    const execute: typeof tool.execute = async (id, params, signal, update, ctx) => {
+      const result = await tool.execute(id, params, signal, update, { ...ctx, cwd: root });
+      return name !== "read" && finished?.() ? { ...result, terminate: true } : result;
+    };
+    return { ...tool, execute };
+  });
+}
+
+/** pi appends the session folder to the prompt; show the agent its own folder instead. */
+export function hideSessionFolder(shown: string) {
+  return (pi: ExtensionAPI) => {
+    pi.on("before_agent_start", (event) => ({
+      systemPrompt: event.systemPrompt.replace(/<cwd>[\s\S]*?<\/cwd>/, `<cwd>\n${shown}\n</cwd>`),
+    }));
+  };
+}
+
 export interface RoleSessionOptions {
   role: Role;
   projectDir: string;
-  /** The only folder the file tools may touch. */
+  /** Relative paths resolve from here; file tools may touch only this folder unless narrowed below. */
   root: string;
+  readable?: string[];
+  writable?: string[];
   containerRoot?: string;
   systemPrompt: string;
   tools: string[];
   customTools: ToolDefinition<any, any>[];
   resume: boolean;
   budget: Budget;
+  /** Checked after each write: true ends the run without another request. */
+  finished?: () => boolean;
   /** One short line per tool call, so a long run is visibly doing something. */
   onTool?: (line: string) => void;
 }
@@ -110,7 +168,7 @@ export async function createRoleSession(o: RoleSessionOptions): Promise<RoleSess
   mkdirSync(PI_HOME, { recursive: true });
 
   const modelRuntime = await ModelRuntime.create({
-    modelsPath: join(REPO, "config/models.json"),
+    modelsPath: config.modelsFile ?? join(REPO, "config/models.json"),
     modelsStorePath: join(PI_HOME, "models-store.json"),
     authPath: join(PI_HOME, "auth.json"),
   });
@@ -121,23 +179,21 @@ export async function createRoleSession(o: RoleSessionOptions): Promise<RoleSess
   };
 
   let exhausted: BudgetExhausted | undefined;
+  let capped = false;
+  const limits = new RunLimits(config.maxRequestsPerRun[o.role]);
   const settingsManager = SettingsManager.inMemory({ retry: { enabled: false } });
   const resourceLoader = new DefaultResourceLoader({
     cwd: home, agentDir: PI_HOME, settingsManager,
     noExtensions: true, noSkills: true, noContextFiles: true, noPromptTemplates: true, noThemes: true,
     systemPrompt: o.systemPrompt,
-    extensionFactories: [guardExtension({
-      root: o.root, containerRoot: o.containerRoot, budget: o.budget, onExhausted: (e) => { exhausted = e; },
+    extensionFactories: [hideSessionFolder(o.containerRoot ?? "."), guardExtension({
+      root: o.root, readable: o.readable, writable: o.writable, containerRoot: o.containerRoot, budget: o.budget, limits,
+      onExhausted: (e) => { exhausted = e; }, onCapped: () => { capped = true; },
     })],
   });
   await resourceLoader.reload();
 
-  const fileTools: Record<string, () => ToolDefinition<any, any>> = {
-    read: () => createReadToolDefinition(o.root),
-    write: () => createWriteToolDefinition(o.root),
-    edit: () => createEditToolDefinition(o.root),
-  };
-  const customTools = [...o.tools.flatMap((name) => fileTools[name]?.() ?? []), ...o.customTools];
+  const customTools = [...rootedFileTools(o.tools, o.root, o.finished), ...o.customTools];
 
   const { session } = await createAgentSession({
     cwd: home, agentDir: PI_HOME, modelRuntime, model: model(config.models[o.role]),
@@ -156,8 +212,28 @@ export async function createRoleSession(o: RoleSessionOptions): Promise<RoleSess
     async prompt(text) {
       if (o.budget.used() >= o.budget.limit) throw new BudgetExhausted();
       exhausted = undefined;
-      await session.prompt(text);
+      capped = false;
+      limits.reset();
+      let stalled = false;
+      const watch = watchStall(config.stallMs, () => {
+        stalled = true;
+        o.onTool?.("no reply from the model, cancelling the request");
+        void session.abort();
+      });
+      const unwatch = session.subscribe((event) => watch.see(event.type));
+      try {
+        await session.prompt(text);
+      } finally {
+        watch.stop();
+        unwatch();
+      }
       if (exhausted) throw exhausted;
+      if (stalled) return `stalled: no reply from the model for ${config.stallMs / 1000} seconds`;
+      if (capped) {
+        // Not a failure: the checks and tests judge whatever was done.
+        o.onTool?.("stopped: this step reached its request limit");
+        return undefined;
+      }
       const last = [...session.messages].reverse().find((m) => m.role === "assistant");
       return last?.role === "assistant" ? last.errorMessage : undefined;
     },

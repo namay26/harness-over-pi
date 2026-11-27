@@ -7,7 +7,7 @@ export interface SpecTurn {
 
 export interface Agents {
   spec(input: { messages: string[]; previous: Spec | null }): Promise<SpecTurn>;
-  build(input: { spec: Spec; failure: string | null }): Promise<void>;
+  build(input: { spec: Spec; failure: string | null; changes: string | null }): Promise<void>;
   writeTests(input: { spec: Spec; ids: string[] }): Promise<void>;
   triage(input: { spec: Spec; failures: Result[] }): Promise<{ testsChanged: boolean; notes: string }>;
 }

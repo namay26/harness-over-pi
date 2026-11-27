@@ -14,6 +14,17 @@ describe("createProject", () => {
       expect(existsSync(join(p.dir, f)), f).toBe(true);
     }
   });
+  it("restores the harness-owned test files of an existing project", () => {
+    const r = root();
+    const p = createProject("demo", r);
+    writeFileSync(join(p.e2eDir, "fixtures.ts"), "weakened");
+    createProject("demo", r);
+    expect(readFileSync(join(p.e2eDir, "fixtures.ts"), "utf8")).toContain("console error");
+    expect(existsSync(join(p.e2eDir, "snapshot.mjs"))).toBe(true);
+    writeFileSync(join(p.dir, "compose.yaml"), "old");
+    createProject("demo", r);
+    expect(readFileSync(join(p.dir, "compose.yaml"), "utf8")).toContain("web-test");
+  });
   it("keeps an existing project", () => {
     const r = root();
     const p = createProject("demo", r);

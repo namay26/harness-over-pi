@@ -2,7 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Agents, SpecTurn, UI } from "../src/agents/types.ts";
-import type { Spec } from "../src/types.ts";
+import type { Result, Spec } from "../src/types.ts";
 import type { CheckResult } from "../src/verify/basic.ts";
 
 export const projectDir = () => mkdtempSync(join(tmpdir(), "pipe-"));
@@ -10,7 +10,7 @@ export const projectDir = () => mkdtempSync(join(tmpdir(), "pipe-"));
 /** Each spec call takes the next turn; the last one repeats. */
 export function fakeAgents(turns: (SpecTurn | Spec)[]) {
   const specCalls: { messages: string[]; previous: Spec | null }[] = [];
-  const buildInputs: { spec: Spec; failure: string | null }[] = [];
+  const buildInputs: { spec: Spec; failure: string | null; changes: string | null }[] = [];
   const agents: Agents = {
     async spec(input) {
       specCalls.push(structuredClone(input));
@@ -47,4 +47,20 @@ export function fakeChecks(results: CheckResult[] = [{ ok: true, url: "http://lo
     return results.length > 1 ? results.shift()! : results[0]!;
   };
   return { checks, runs: () => runs };
+}
+
+/** Each run takes the next result set; the last one repeats. By default everything passes. */
+export function fakeTests(results: Result[][] = [[{ id: "D1", status: "pass", evidence: "" }]], missing: string[] = []) {
+  let runs = 0;
+  const removed: string[][] = [];
+  return {
+    removed,
+    remove: (_dir: string, ids: string[]) => { removed.push(ids); },
+    missing: () => missing,
+    async run() {
+      runs++;
+      return results.length > 1 ? results.shift()! : results[0]!;
+    },
+    runs: () => runs,
+  };
 }

@@ -23,7 +23,8 @@ Rules
 - Data must survive a page reload.
 - If people sign in, use Better Auth and make every query filter by the signed-in user.
 - No outside services. Stub them and say so in the page.
-- Never start a dev server or any other long-running command; the harness runs the preview.
+- Never start a dev server, drizzle-kit studio or any other long-running command; the harness runs
+  the preview.
 - Do not weaken checks: no ignored type errors, no replaced package scripts.
 - Before finishing, run: npx tsc --noEmit && npx next build
 - Be economical: you have few turns. Write whole files at once and run several shell commands in

@@ -35,6 +35,17 @@ services:
     command: npx --no-install next start -H 0.0.0.0 -p 3000
     ports:
       - "127.0.0.1:${WEB_PORT:-3000}:3000"
+  web-test:
+    <<: *node
+    command: npx --no-install next start -H 0.0.0.0 -p 3000
+    environment:
+      HOME: /tmp
+      DATABASE_URL: postgres://app:app@db:5432/app_test
+      NEXT_TELEMETRY_DISABLED: "1"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then(()=>process.exit(0),()=>process.exit(1))"]
+      interval: 2s
+      retries: 60
   e2e:
     image: mcr.microsoft.com/playwright:v1.65.1-noble
     profiles: [e2e]
@@ -43,7 +54,7 @@ services:
     init: true
     environment:
       HOME: /tmp
-      BASE_URL: http://web:3000
+      BASE_URL: http://web-test:3000
     volumes:
       - ./e2e:/e2e
 

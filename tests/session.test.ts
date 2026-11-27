@@ -42,6 +42,13 @@ describe("runWithFallback", () => {
     await expect(runWithFallback(d, "go", noWait)).rejects.toThrow(BudgetExhausted);
     expect(d.calls).toEqual(["go"]);
   });
+  it("retries a stalled request once on the same model", async () => {
+    const d = driver(["stalled: no reply", undefined]);
+    await runWithFallback(d, "go", noWait);
+    expect(d.calls).toHaveLength(2);
+    expect(d.calls).not.toContain("<fallback>");
+    await expect(runWithFallback(driver(["stalled: a", "stalled: b"]), "go", noWait)).rejects.toThrow("stalled");
+  });
   it("never reports other model errors as success", async () => {
     await expect(runWithFallback(driver(["500: boom"]), "go", noWait)).rejects.toThrow("boom");
   });
