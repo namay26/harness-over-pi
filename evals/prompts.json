@@ -1,0 +1,7 @@
+[
+  { "prompt": "build me a habit tracker" },
+  { "prompt": "an app for splitting expenses with my flatmates" },
+  { "prompt": "a todo list for my team where each person signs in" },
+  { "prompt": "a single user notes app with search, no login" },
+  { "prompt": "personal habit tracker for just me, no login, daily habits only ticked done or not done, no reminders or emails", "maxQuestions": 0 }
+]
