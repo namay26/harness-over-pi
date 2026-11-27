@@ -16,7 +16,8 @@ function verifierWith(onRun: (dir: string, call: number) => void) {
   let options!: RoleSessionOptions;
   const agents = createVerifierAgent({
     projectDir: dir, budget: new Budget(`${dir}/usage.json`, 50),
-    exec: async () => ({ code: 0, output: "- button 'Add'" }),
+    exec: async (_dir, args) =>
+      ({ code: 0, output: args.join(" ").includes("drizzle-kit") ? "Changes applied" : "- button 'Add'" }),
     createSession: async (o) => {
       options = o;
       return {
@@ -63,7 +64,7 @@ describe("queryDatabase", () => {
     let args: string[] = [];
     await queryDatabase("/p", "select 1", async (_d, a) => { args = a; return { code: 0, output: "1" }; });
     expect(args).toEqual(["exec", "-T", "-e", "PGPASSWORD=reader", "db",
-      "psql", "-h", "127.0.0.1", "-U", "reader", "-d", "app", "-c", "select 1"]);
+      "psql", "-h", "127.0.0.1", "-U", "reader", "-d", "app_test", "-c", "select 1"]);
   });
   it("refuses psql commands, which can run a shell or switch user", async () => {
     await expect(queryDatabase("/p", "\\! id", async () => ({ code: 0, output: "" }))).rejects.toThrow("SQL only");

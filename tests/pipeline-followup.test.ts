@@ -12,6 +12,11 @@ const first = spec(settled, { deliverables: [d("D1"), d("D2"), d("D3")] });
 const next = spec(settled, { deliverables: [d("D1"), d("D2", "new check"), d("D4")] });
 
 describe("diffSpec", () => {
+  it("reports changes to sign-in and constraints", () => {
+    const text = renderChanges(diffSpec(first, { ...first, needsAccounts: true, constraints: ["offline"] }));
+    expect(text).toContain("people sign in: yes");
+    expect(text).toContain("offline");
+  });
   it("finds added, changed and removed deliverables", () => {
     const diff = diffSpec(first, next);
     expect([diff.added, diff.changed, diff.removed].map((list) => list.map((x) => x.id)))
@@ -55,6 +60,13 @@ describe("follow-up requests", () => {
     expect(fake.builds()).toBe(0);
   });
 
+  it("does not build when the approved draft changes nothing", async () => {
+    const dir = await built();
+    const fake = fakeAgents([first]);
+    await handleMessage({ dir, agents: fake.agents, ui: fakeUI().ui, checks: fakeChecks().checks, tests: fakeTests() }, "same");
+    expect(fake.builds()).toBe(0);
+    expect(loadState(dir).stage).toBe("done");
+  });
   it("builds the whole app, not a change, the first time", async () => {
     const dir = projectDir();
     const fake = fakeAgents([first]);

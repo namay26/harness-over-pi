@@ -123,10 +123,31 @@ describe("builder agent", () => {
     await expect(b.build({ spec: spec(), failure: null, changes: null })).rejects.toThrow("without changing the app");
     expect(b.prompts).toHaveLength(2);
   });
-  it("passes the failure on a fix round and accepts a fix outside src", async () => {
-    const b = builderWith([false]);
+  it("passes the failure on a fix round", async () => {
+    const b = builderWith([true]);
     await b.build({ spec: spec(), failure: "tsc: Cannot find name 'x'", changes: null });
     expect(b.prompts).toHaveLength(1);
     expect(b.prompts[0]).toContain("Cannot find name 'x'");
+  });
+  it("reminds once, then fails, if a fix round changes nothing", async () => {
+    const b = builderWith([false, false]);
+    await expect(b.build({ spec: spec(), failure: "boom", changes: null })).rejects.toThrow("without changing the app");
+    expect(b.prompts).toHaveLength(2);
+  });
+  it("counts a fix outside src as a change, but not installed packages", async () => {
+    const dir = projectDir();
+    mkdirSync(join(dir, "app", "node_modules"), { recursive: true });
+    const writes = ["node_modules/x.js", "package.json"];
+    let runs = 0;
+    const build = createBuilderAgent({
+      projectDir: dir, budget: new Budget(`${dir}/usage.json`, 50),
+      exec: async () => ({ code: 0, output: "" }),
+      createSession: async () => ({
+        sessionFile: undefined, dispose() {}, lastText: () => "",
+        async run() { writeFileSync(join(dir, "app", writes[runs++]!), "x"); },
+      }),
+    });
+    await build({ spec: spec(), failure: "boom", changes: null });
+    expect(runs).toBe(2);
   });
 });

@@ -2,6 +2,7 @@ import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join, relative } from "node:path";
 import { listFiles } from "../files.ts";
 import { compose } from "../sandbox/docker.ts";
+import { resetTestApp } from "../sandbox/testApp.ts";
 import type { Result, Spec } from "../types.ts";
 
 const TEST_FILE = /\.(spec|test)\.[cm]?[jt]s$/;
@@ -18,6 +19,7 @@ export function lintTests(e2eDir: string): string[] {
     const bypass = body.match(BYPASS);
     if (bypass) problems.push(`${name}: test.${bypass[1]} is not allowed`);
     if (body.includes("@playwright/test")) problems.push(`${name}: import test and expect from "../fixtures"`);
+    if (/\bnewContext\b/.test(body)) problems.push(`${name}: use the otherPage fixture for a second user`);
     if (isTest && !/\bexpect\s*[(.]/.test(body)) problems.push(`${name}: asserts nothing`);
     return problems;
   });
@@ -37,12 +39,19 @@ export function removeTests(e2eDir: string, ids: string[]): void {
 
 interface ReportSpec {
   title: string;
-  tests: { status: string; results: { error?: { message?: string } }[] }[];
+  tests: { status: string; expectedStatus?: string; results: { error?: { message?: string } }[] }[];
 }
-interface Suite { suites?: Suite[]; specs?: ReportSpec[] }
+interface Suite { title?: string; suites?: Suite[]; specs?: ReportSpec[] }
 interface Report { suites: Suite[]; errors?: { message?: string }[] }
 
-const specsIn = (suite: Suite): ReportSpec[] => [...(suite.specs ?? []), ...(suite.suites ?? []).flatMap(specsIn)];
+/** Specs with the titles of their describe blocks prefixed, so a tag on either one counts. */
+const specsIn = (suite: Suite, titles = ""): ReportSpec[] => {
+  const path = `${titles} ${suite.title ?? ""}`;
+  return [
+    ...(suite.specs ?? []).map((s) => ({ ...s, title: `${path} ${s.title}`.trim() })),
+    ...(suite.suites ?? []).flatMap((child) => specsIn(child, path)),
+  ];
+};
 const plain = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, "").slice(0, 1500);
 const untestedAll = (spec: Spec, evidence: string): Result[] =>
   spec.deliverables.map((d) => ({ id: d.id, status: "untested", evidence }));
@@ -50,14 +59,15 @@ const untestedAll = (spec: Spec, evidence: string): Result[] =>
 /** Turns a Playwright JSON report into one result per deliverable, matched by the [D<n>] title tag. */
 export function toResults(report: unknown, spec: Spec): Result[] {
   const { suites, errors } = report as Report;
-  const specs = suites.flatMap(specsIn);
+  const specs = suites.flatMap((suite) => specsIn(suite));
   const loadErrors = plain((errors ?? []).map((e) => e.message).join("\n"));
 
   return spec.deliverables.map(({ id }) => {
-    const tagged = specs.filter((s) => s.title.startsWith(`[${id}]`));
+    const tagged = specs.filter((s) => s.title.includes(`[${id}]`));
     const runs = tagged.flatMap((s) => s.tests.map((t) => ({ title: s.title, ...t })));
     // A test that only passes on retry is unreliable, so it counts as a failure.
-    const failed = runs.filter((t) => t.status === "unexpected" || t.status === "flaky");
+    const failed = runs.filter((t) =>
+      t.status === "unexpected" || t.status === "flaky" || (t.expectedStatus ?? "passed") === "failed");
     if (failed.length > 0) {
       const evidence = failed.map((t) => {
         const message = t.results.find((r) => r.error?.message)?.error?.message ?? t.status;
@@ -83,9 +93,10 @@ export async function runTests(dir: string, spec: Spec, exec = compose): Promise
   const problems = lintTests(e2eDir);
   if (problems.length > 0) return untestedAll(spec, `Tests not run:\n${problems.join("\n")}`);
 
-  await ensureTestPackages(dir, exec);
   const reportFile = join(e2eDir, "results.json");
   rmSync(reportFile, { force: true });
+  await ensureTestPackages(dir, exec);
+  await resetTestApp(dir, exec);
   const { output } = await exec(
     dir, ["run", "--rm", "-T", "e2e", "npx", "--no-install", "playwright", "test"], { timeoutMs: 900_000 });
   if (!existsSync(reportFile)) throw new Error(`The tests did not produce a report:\n${output.slice(-2000)}`);

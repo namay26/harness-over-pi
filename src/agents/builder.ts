@@ -40,7 +40,7 @@ export function createBuilderAgent(o: {
 }): Agents["build"] {
   const exec = o.exec ?? compose;
   const appDir = join(o.projectDir, "app");
-  const sourceHash = () => hashFolder(join(appDir, "src"));
+  const appHash = () => hashFolder(appDir, ["node_modules", ".next", "next-env.d.ts", "tsconfig.tsbuildinfo"]);
 
   return async ({ spec, failure, changes }) => {
     const up = await exec(o.projectDir, ["up", "-d", "--wait", "shell"], { timeoutMs: 600_000 });
@@ -56,10 +56,19 @@ export function createBuilderAgent(o: {
       tools: ["read", "write", "edit", "bash", "app_logs"], customTools: [bash, appLogs],
       resume: true, budget: o.budget, onTool: o.onTool,
     });
+    /** Runs a task and insists that it changes the app, so "done" is never just a claim. */
+    const mustChange = async (task: string, before: string) => {
+      await session.run(task);
+      if (appHash() !== before) return;
+      await session.run("You have not changed any file. Make the change now using the write and edit tools.");
+      if (appHash() === before) throw new Error("The builder finished without changing the app. Try again or change the model.");
+    };
+
     try {
       if (failure) {
-        await session.run(
-          `A check failed after your last change. Find the cause and fix it.\n\n${failure}\n\nThe spec:\n${describeSpec(spec)}`);
+        await mustChange(
+          `A check failed after your last change. Find the cause and fix it.\n\n${failure}\n\nThe spec:\n${describeSpec(spec)}`,
+          appHash());
         return;
       }
       // The baseline outlives an interrupted run, so work done before the interruption still counts.
@@ -67,7 +76,7 @@ export function createBuilderAgent(o: {
       const job = createHash("sha256").update(JSON.stringify([spec, changes])).digest("hex");
       const saved = existsSync(marker) ? readFileSync(marker, "utf8").split("\n") : [];
       const interrupted = saved[0] === job;
-      const before = interrupted ? saved[1]! : sourceHash();
+      const before = interrupted ? saved[1]! : appHash();
       if (!interrupted) {
         mkdirSync(dirname(marker), { recursive: true });
         writeFileSync(marker, `${job}\n${before}`);
@@ -75,15 +84,9 @@ export function createBuilderAgent(o: {
       const task = changes
         ? `Change the existing app. What changed:\n${changes}\n\nThe full spec now:\n${describeSpec(spec)}\n\nCurrent files:\n`
         : `Build this app.\n\n${describeSpec(spec)}\n\nThe starter files, so you do not need to read them:\n`;
-      await session.run(interrupted
+      await mustChange(interrupted
         ? `You were interrupted partway. Do not read files again that you have already seen. Finish, then run the checks.\n\n${describeSpec(spec)}`
-        : task + fileBlocks(appDir, STARTER_FILES));
-      if (sourceHash() === before) {
-        await session.run("You have not changed any file in src/. Build the app now using the write and edit tools.");
-        if (sourceHash() === before) {
-          throw new Error("The builder finished without changing the app. Try again or change the model.");
-        }
-      }
+        : task + fileBlocks(appDir, STARTER_FILES), before);
       rmSync(marker);
     } finally {
       session.dispose();

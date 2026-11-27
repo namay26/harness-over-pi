@@ -5,6 +5,7 @@ import { Type } from "typebox";
 import type { Budget } from "../budget.ts";
 import { hashFolder, listFiles } from "../files.ts";
 import { compose } from "../sandbox/docker.ts";
+import { resetTestApp, TEST_DB, TEST_SERVICE } from "../sandbox/testApp.ts";
 import { ensureTestPackages, missingTests } from "../verify/runner.ts";
 import { createRoleSession, type RoleSession } from "./session.ts";
 import { appLogsTool, describeSpec, fileBlocks, textResult } from "./shared.ts";
@@ -17,7 +18,7 @@ const MAX_SOURCE_CHARS = 60_000;
 export async function queryDatabase(dir: string, sql: string, exec = compose): Promise<string> {
   if (sql.includes("\\")) throw new Error("SQL only: backslashes are not allowed.");
   const { output } = await exec(dir, ["exec", "-T", "-e", "PGPASSWORD=reader", "db",
-    "psql", "-h", "127.0.0.1", "-U", "reader", "-d", "app", "-c", sql], { timeoutMs: 30_000 });
+    "psql", "-h", "127.0.0.1", "-U", "reader", "-d", TEST_DB, "-c", sql], { timeoutMs: 30_000 });
   return output.slice(-6000);
 }
 
@@ -55,7 +56,7 @@ export function createVerifierAgent(o: {
         return textResult(await snapshotPage(projectDir, path, exec));
       },
     }),
-    appLogsTool(projectDir, exec),
+    appLogsTool(projectDir, exec, TEST_SERVICE),
     defineTool({
       name: "db_query", label: "Database query", description: "Run one read-only SQL query.",
       parameters: Type.Object({ sql: Type.String() }),
@@ -82,6 +83,7 @@ export function createVerifierAgent(o: {
 
   return {
     writeTests: ({ spec, ids }) => withSession(async (session) => {
+      await resetTestApp(projectDir, exec);
       const home = await snapshotPage(projectDir, "/", exec);
       await session.run([
         `Write tests for these deliverables: ${ids.join(", ")}.`,

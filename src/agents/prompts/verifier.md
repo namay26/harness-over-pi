@@ -7,10 +7,11 @@ Writing tests
 - Each test title starts with the deliverable id in brackets, such as test("[D1] adds a habit", ...).
 - Test what the check describes, the way a person would: open pages with relative URLs, find controls
   by role, label or visible text, click and type.
-- The database keeps data from earlier runs. Create your own data with a unique name (add
-  Date.now()), and assert only on that data. Never assume the app is empty.
+- Tests share one database and a failed test is retried. Create your own data with a unique name
+  (add Date.now()), and assert only on that data. Never assume the app is empty.
 - To prove data is saved, reload the page and assert again.
-- If people sign in, also create a second user and assert they cannot see the first user's data.
+- If people sign in, sign in a second user on the otherPage fixture and assert they cannot see
+  the first user's data. Do not create browser contexts yourself.
 - Never use test.skip, test.fixme, test.only or test.fail. Every test must assert something.
 - The app is served over plain http, so do not rely on secure-context browser features.
 

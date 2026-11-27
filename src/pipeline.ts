@@ -1,6 +1,6 @@
 // TypeScript owns the stages. Agents only draft and build.
 import type { Agents, UI } from "./agents/types.ts";
-import { diffSpec, renderChanges, type SpecDiff } from "./spec/diff.ts";
+import { diffSpec, isUnchanged, renderChanges, type SpecDiff } from "./spec/diff.ts";
 import { pickQuestions } from "./spec/questions.ts";
 import { loadDraft, loadSpec, loadState, saveDraft, saveSpec, saveState } from "./state.ts";
 import type { Result, Spec, Stage, State } from "./types.ts";
@@ -108,6 +108,11 @@ async function approve(deps: Deps, state: State, first: Spec, before: Stage = st
       return;
     }
     if (["yes", "y", ""].includes(answer.toLowerCase())) {
+      if (diff && isUnchanged(diff)) {
+        enter(deps, state, before === "spec" || before === "approval" ? "done" : before);
+        deps.ui.say("That changes nothing in the app, so there is nothing to build.");
+        return;
+      }
       accept(deps, state, spec, diff);
       deps.ui.say("Approved and saved. Building now; this takes a few minutes.");
       return build(deps, state);

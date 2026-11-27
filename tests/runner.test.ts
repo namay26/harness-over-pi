@@ -33,6 +33,15 @@ describe("toResults", () => {
   it("treats skipped as untested and flaky as failed", () => {
     expect(statusOf(report(run("[D1] a", "skipped"), run("[D2] b", "flaky")))).toEqual(["untested", "fail"]);
   });
+  it("matches the tag on a surrounding describe block", () => {
+    const tagged = { suites: [{ title: "[D1] habits", specs: [run("adds one", "expected")] }] };
+    expect(toResults(tagged, two)[0]!.status).toBe("pass");
+  });
+  it("never passes a test that is expected to fail", () => {
+    const inverted = run("[D1] a", "expected");
+    Object.assign(inverted.tests[0]!, { expectedStatus: "failed" });
+    expect(toResults(report(inverted), two)[0]!.status).toBe("fail");
+  });
   it("reports load errors as evidence for untested deliverables", () => {
     const [d1] = toResults({ suites: [], errors: [{ message: "SyntaxError in d1.spec.ts" }] }, two);
     expect(d1).toMatchObject({ status: "untested", evidence: expect.stringContaining("SyntaxError") });
@@ -46,6 +55,9 @@ describe("lintTests", () => {
   });
   it("flags bypassing the shared fixtures", () => {
     expect(lintTests(e2e({ "a.spec.ts": GOOD.replace("../fixtures", "@playwright/test") }))).not.toEqual([]);
+  });
+  it("flags a second browser context, which would skip the error checks", () => {
+    expect(lintTests(e2e({ "a.spec.ts": `${GOOD}await browser.newContext();` }))).not.toEqual([]);
   });
   it("flags a file that asserts nothing", () => {
     expect(lintTests(e2e({ "a.spec.ts": GOOD.replace("expect(1).toBe(1);", "") }))).not.toEqual([]);

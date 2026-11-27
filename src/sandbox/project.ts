@@ -3,7 +3,7 @@ import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const TEMPLATE = fileURLToPath(new URL("../../template", import.meta.url));
-const HARNESS_OWNED = ["e2e/package.json", "e2e/playwright.config.ts", "e2e/fixtures.ts", "e2e/snapshot.mjs"];
+const HARNESS_OWNED = ["compose.yaml", "e2e/package.json", "e2e/playwright.config.ts", "e2e/fixtures.ts", "e2e/snapshot.mjs"];
 
 export interface Project {
   dir: string;
@@ -16,7 +16,7 @@ export function createProject(name: string, root = "workspaces"): Project {
     throw new Error(`Project name must be lowercase letters, digits or "-", up to 40 characters: ${name}`);
   }
   const dir = resolve(root, name);
-  if (!existsSync(join(dir, "compose.yaml"))) {
+  if (!existsSync(join(dir, "app"))) {
     cpSync(TEMPLATE, dir, { recursive: true, filter: (src) => !["node_modules", ".next"].includes(basename(src)) });
   }
   for (const file of HARNESS_OWNED) cpSync(join(TEMPLATE, file), join(dir, file));

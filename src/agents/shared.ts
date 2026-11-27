@@ -26,12 +26,12 @@ export function fileBlocks(base: string, files: string[]): string {
 
 export const textResult = (text: string) => ({ content: [{ type: "text" as const, text }], details: {} });
 
-export function appLogsTool(dir: string, exec = compose) {
+export function appLogsTool(dir: string, exec = compose, service = "web") {
   return defineTool({
-    name: "app_logs", label: "App logs", description: "Show the last lines of the preview server log.",
+    name: "app_logs", label: "App logs", description: "Show the last lines of the app server log.",
     parameters: Type.Object({ lines: Type.Optional(Type.Number()) }),
     async execute(_id, { lines }) {
-      const { output } = await exec(dir, ["logs", "--no-color", "--tail", String(lines ?? 60), "web"]);
+      const { output } = await exec(dir, ["logs", "--no-color", "--tail", String(lines ?? 60), service]);
       return textResult(output.slice(-8000) || "(no log yet)");
     },
   });

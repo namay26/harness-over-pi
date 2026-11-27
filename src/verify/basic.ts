@@ -1,15 +1,14 @@
 // Plain code checks, no model. The real tools are called directly so that an
 // edited package.json script cannot turn a check into a no-op.
+import { PUSH_SCHEMA, schemaApplied } from "../sandbox/database.ts";
 import { compose, waitForWeb } from "../sandbox/docker.ts";
 
 export type CheckResult = { ok: true; url: string } | { ok: false; step: string; output: string };
 
 const TAIL = 4000;
-// drizzle-kit exits 0 even when the database rejects the change, so look for what success prints.
-const PUSHED = /Changes applied|No changes detected/;
 const APP_STEPS = [
   ["npm", "install"],
-  ["npx", "--no-install", "drizzle-kit", "push", "--force"],
+  PUSH_SCHEMA,
   ["npx", "--no-install", "tsc", "--noEmit"],
   ["npx", "--no-install", "next", "build"],
 ];
@@ -25,7 +24,7 @@ export async function runBasicChecks(dir: string, exec = compose, probe = waitFo
   await must(["up", "-d", "--wait", "db"]);
   for (const command of APP_STEPS) {
     const { code, output } = await run(["run", "--rm", "shell", ...command]);
-    const failed = code !== 0 || (command.includes("drizzle-kit") && !PUSHED.test(output));
+    const failed = code !== 0 || (command === PUSH_SCHEMA && !schemaApplied(output));
     if (failed) return { ok: false, step: command.join(" "), output: output.slice(-TAIL) };
   }
   await must(["up", "-d", "--force-recreate", "web"]);

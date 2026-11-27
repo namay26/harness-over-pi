@@ -21,6 +21,9 @@ describe("createProject", () => {
     createProject("demo", r);
     expect(readFileSync(join(p.e2eDir, "fixtures.ts"), "utf8")).toContain("console error");
     expect(existsSync(join(p.e2eDir, "snapshot.mjs"))).toBe(true);
+    writeFileSync(join(p.dir, "compose.yaml"), "old");
+    createProject("demo", r);
+    expect(readFileSync(join(p.dir, "compose.yaml"), "utf8")).toContain("web-test");
   });
   it("keeps an existing project", () => {
     const r = root();

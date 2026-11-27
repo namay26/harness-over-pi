@@ -69,7 +69,7 @@ try {
     ["read", { path: ".builder/state.json" }],
     ["read", { path: "app/src/app/dry.tsx" }],
   ];
-  const verifier = createVerifierAgent({ projectDir: project.dir, budget, exec: async () => ({ code: 0, output: "- heading" }) });
+  const verifier = createVerifierAgent({ projectDir: project.dir, budget, exec: async () => ({ code: 0, output: "- heading (Changes applied)" }) });
   await verifier.writeTests({ spec, ids: ["D1"] });
   show("verifier");
   console.log("app untouched:", !existsSync(join(project.appDir, "src/app/hacked.tsx")), "| test written:", existsSync(join(project.e2eDir, "tests/d1.spec.ts")));

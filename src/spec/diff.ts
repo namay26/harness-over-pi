@@ -4,6 +4,7 @@ export interface SpecDiff {
   added: Deliverable[];
   changed: Deliverable[];
   removed: Deliverable[];
+  decisions: string[];
 }
 
 /** Compares deliverables by id; ids are stable across follow-ups. */
@@ -16,11 +17,19 @@ export function diffSpec(previous: Spec, next: Spec): SpecDiff {
       return old && (old.does !== d.does || old.check !== d.check);
     }),
     removed: previous.deliverables.filter((d) => !find(next, d.id)),
+    decisions: [
+      ...(previous.needsAccounts === next.needsAccounts ? [] : [`people sign in: ${next.needsAccounts ? "yes" : "no"}`]),
+      ...(previous.constraints.join() === next.constraints.join() ? [] : [`constraints: ${next.constraints.join(", ") || "none"}`]),
+    ],
   };
 }
 
+export const isUnchanged = (diff: SpecDiff) => Object.values(diff).every((list) => list.length === 0);
+
 export function renderChanges(diff: SpecDiff): string {
-  const lines = (["added", "changed", "removed"] as const)
-    .flatMap((kind) => diff[kind].map((d) => `  ${kind} ${d.id}: ${d.does}`));
-  return lines.join("\n") || "  no change to the deliverables";
+  const lines = [
+    ...(["added", "changed", "removed"] as const).flatMap((kind) => diff[kind].map((d) => `  ${kind} ${d.id}: ${d.does}`)),
+    ...diff.decisions.map((line) => `  ${line}`),
+  ];
+  return lines.join("\n") || "  nothing";
 }
