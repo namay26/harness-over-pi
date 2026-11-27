@@ -16,7 +16,7 @@ The project focuses on two problems:
 3. **Approval.** You approve the draft or type a correction. Nothing is built before approval.
 4. **Build.** A second agent writes the app inside a Docker sandbox.
 5. **Checks.** Plain code installs packages, applies the database schema, checks types, builds the app and loads the home page. Failures go back to the builder, up to 3 times.
-6. **Verification.** A third agent, which cannot change the app, writes a browser test for each deliverable. TypeScript runs the tests and records each one as pass, fail or untested. Failures go back to the builder.
+6. **Verification.** A third agent, which cannot change the app, writes a browser test for each deliverable. TypeScript runs the tests and records each one as pass, fail or untested. Tests run against their own copy of the app with an empty database, so your preview data is untouched. Failures go back to the builder. If a test had to be rewritten before it passed, the report says so.
 7. **Preview.** The app runs at http://localhost:3000.
 
 TypeScript controls the stages and records the results. The agents only draft, build and write tests.
@@ -25,11 +25,18 @@ TypeScript controls the stages and records the results. The agents only draft, b
 
 | Part | State |
 |---|---|
-| Spec, questions and approval | Working |
-| Build, basic checks and local preview | Implemented. A full run has not yet finished with a real model |
-| Browser verification of each deliverable | Implemented. The test runner works in Docker. Test writing has not yet been run with a real model |
+| Spec, questions and approval | Working with a real model |
+| Build and fix rounds, basic checks, local preview | Working with a real model |
+| Browser verification | Working with a real model. A demo habit tracker passed all 5 deliverables |
+| Building a new app from nothing in one run | Not yet confirmed since the latest fixes |
 | Follow-up changes to a built app | Implemented. Not yet run with a real model |
 | Deployment to production | Not built yet |
+
+Known limits:
+
+- A weak test can still pass. Check by hand anything the report marks as passed only after a rewrite.
+- The builder could loosen TypeScript settings to get past the type check. The browser tests still apply.
+- The file guard has a narrow race: a process left running in the container could swap a link between the check and the read. Do not point the builder at requests you do not trust.
 
 ## Setup
 
@@ -91,6 +98,17 @@ docker compose -p builder-habits down
 ```
 
 Add `-v` to also delete the app's database.
+
+## Requests
+
+Each agent step has its own request cap, and a repeated or refused tool call ends the step. `DAILY_REQUEST_LIMIT` (default 50) limits the whole day. The count resets at midnight UTC. The default model is a free one, set in `src/config.ts` or with `MODEL_SPEC`, `MODEL_BUILDER` and `MODEL_VERIFIER`.
+
+## Checking the harness
+
+| Command | What it does | Model requests |
+|---|---|---|
+| `npm run eval:intent` | Shows the questions asked for five sample prompts | About one per prompt |
+| `npm run eval:broken -- <project> <file> <text> <replacement> <D-id>` | Breaks a copy of a built app and confirms the tests catch it | None |
 
 ## Development
 
