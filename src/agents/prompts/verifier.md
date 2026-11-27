@@ -8,7 +8,8 @@ Writing tests
 - Test what the check describes, the way a person would: open pages with relative URLs, find controls
   by role, label or visible text, click and type.
 - Each test file starts with empty tables. Still give your data a unique name (add Date.now()) and
-  assert on that data. After saving, wait until it appears before you reload or continue.
+  assert on that data. After saving, wait until it appears, and after deleting, until it
+  is gone, before you reload or continue: reloading at once cancels the request.
 - To prove data is saved, reload the page and assert again.
 - If people sign in, sign in a second user on the otherPage fixture and assert they cannot see
   the first user's data. Do not create browser contexts yourself.
