@@ -16,7 +16,7 @@ The project focuses on two problems:
 3. **Approval.** You approve the draft or type a correction. Nothing is built before approval.
 4. **Build.** A second agent writes the app inside a Docker sandbox.
 5. **Checks.** Plain code installs packages, applies the database schema, checks types, builds the app and loads the home page. Failures go back to the builder, up to 3 times.
-6. **Verification.** A third agent, which cannot change the app, writes a browser test for each deliverable. TypeScript runs the tests and records each one as pass, fail or untested. Tests run against their own copy of the app with an empty database, so your preview data is untouched. Failures go back to the builder. If a test had to be rewritten before it passed, the report says so.
+6. **Verification.** A third agent, which cannot change the app, writes a browser test for each deliverable. TypeScript runs the tests and records each one as pass, fail or untested. Tests run against their own copy of the app, and each test file starts with empty tables, so your preview data is untouched. Failures go back to the builder. If a test had to be rewritten before it passed, the report says so.
 7. **Preview.** The app runs at http://localhost:3000.
 
 TypeScript controls the stages and records the results. The agents only draft, build and write tests.
@@ -28,7 +28,7 @@ TypeScript controls the stages and records the results. The agents only draft, b
 | Spec, questions and approval | Working with a real model |
 | Build and fix rounds, basic checks, local preview | Working with a real model |
 | Browser verification | Working with a real model. A demo habit tracker passed all 5 deliverables |
-| Building a new app from nothing in one run | Not yet confirmed since the latest fixes |
+| Building a new app from nothing | Confirmed once with a small notes app (3 of 3 deliverables). The run had to be resumed after a stalled model request, which is now timed out |
 | Follow-up changes to a built app | Implemented. Not yet run with a real model |
 | Deployment to production | Not built yet |
 
@@ -101,7 +101,7 @@ Add `-v` to also delete the app's database.
 
 ## Requests
 
-Each agent step has its own request cap, and a repeated or refused tool call ends the step. `DAILY_REQUEST_LIMIT` (default 50) limits the whole day. The count resets at midnight UTC. The default model is a free one, set in `src/config.ts` or with `MODEL_SPEC`, `MODEL_BUILDER` and `MODEL_VERIFIER`.
+Each agent step has its own request cap, and a repeated or refused tool call ends the step. A model request with no reply for 3 minutes (`STALL_SECONDS`) is cancelled and retried once. `DAILY_REQUEST_LIMIT` (default 50) limits the whole day. The count resets at midnight UTC. The default model is a free one, set in `src/config.ts` or with `MODEL_SPEC`, `MODEL_BUILDER` and `MODEL_VERIFIER`.
 
 ## Checking the harness
 

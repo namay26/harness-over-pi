@@ -11,10 +11,33 @@ function watch(page: Page, problems: string[]) {
   });
 }
 
+// Reloading while a save or delete is still in flight cancels it, so navigation waits for quiet.
+function settleBeforeNavigating(page: Page) {
+  let pending = 0;
+  page.on("request", () => pending++);
+  page.on("requestfinished", () => pending--);
+  page.on("requestfailed", () => pending--);
+  const settle = async () => {
+    for (let quiet = 0, waited = 0; quiet < 3 && waited < 100; waited++) {
+      await page.waitForTimeout(100);
+      quiet = pending === 0 ? quiet + 1 : 0;
+    }
+  };
+  const reload = page.reload.bind(page);
+  const goto = page.goto.bind(page);
+  page.reload = async (options) => (await settle(), reload(options));
+  page.goto = async (url, options) => (await settle(), goto(url, options));
+}
+
+function prepare(page: Page, problems: string[]) {
+  watch(page, problems);
+  settleBeforeNavigating(page);
+}
+
 export const test = base.extend<{ otherPage: Page }>({
   page: async ({ page }, use) => {
     const problems: string[] = [];
-    watch(page, problems);
+    prepare(page, problems);
     await use(page);
     expect(problems).toEqual([]);
   },
@@ -23,7 +46,7 @@ export const test = base.extend<{ otherPage: Page }>({
     const context = await browser.newContext({ baseURL });
     const page = await context.newPage();
     const problems: string[] = [];
-    watch(page, problems);
+    prepare(page, problems);
     await use(page);
     await context.close();
     expect(problems).toEqual([]);
