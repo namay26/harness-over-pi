@@ -19,7 +19,7 @@ describe("containerBash", () => {
   it("runs inside the shell container with a time limit and no host environment", async () => {
     const { calls, result } = run(0);
     await expect(result).resolves.toEqual({ exitCode: 0 });
-    expect(calls[0]).toEqual(["exec", "-T", "shell", "timeout", "-k", "5", "600", "bash", "-c", "echo hi"]);
+    expect(calls[0]).toEqual(["exec", "-T", "shell", "timeout", "-k", "5", "300", "bash", "-c", "echo hi"]);
     expect(JSON.stringify(calls)).not.toContain("secret");
   });
   it("reports a timeout the way pi expects", async () => {

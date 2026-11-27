@@ -21,3 +21,15 @@ export async function resetTestApp(dir: string, exec = compose): Promise<void> {
     schemaApplied);
   await run(["up", "-d", "--wait", "--force-recreate", TEST_SERVICE]);
 }
+
+const EMPTY_TABLES = `DO $$ DECLARE t text; BEGIN
+  FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' LOOP
+    EXECUTE format('TRUNCATE TABLE %I RESTART IDENTITY CASCADE', t);
+  END LOOP;
+END $$`;
+
+export async function emptyTestTables(dir: string, exec = compose): Promise<void> {
+  const { code, output } = await exec(dir,
+    ["exec", "-T", "db", "psql", "-v", "ON_ERROR_STOP=1", "-U", "app", "-d", TEST_DB, "-c", EMPTY_TABLES]);
+  if (code !== 0) throw new Error(`Could not empty the test database:\n${output.slice(-2000)}`);
+}

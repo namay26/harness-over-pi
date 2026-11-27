@@ -7,8 +7,8 @@ Writing tests
 - Each test title starts with the deliverable id in brackets, such as test("[D1] adds a habit", ...).
 - Test what the check describes, the way a person would: open pages with relative URLs, find controls
   by role, label or visible text, click and type.
-- Tests share one database and a failed test is retried. Create your own data with a unique name
-  (add Date.now()), and assert only on that data. Never assume the app is empty.
+- Each test file starts with empty tables. Still give your data a unique name (add Date.now()) and
+  assert on that data. After saving, wait until it appears before you reload or continue.
 - To prove data is saved, reload the page and assert again.
 - If people sign in, sign in a second user on the otherPage fixture and assert they cannot see
   the first user's data. Do not create browser contexts yourself.

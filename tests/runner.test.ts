@@ -80,6 +80,27 @@ describe("removeTests", () => {
 });
 
 describe("runTests", () => {
+  it("empties the test tables before each test file", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "proj-"));
+    mkdirSync(join(dir, "e2e", "tests"), { recursive: true });
+    mkdirSync(join(dir, "e2e", "node_modules"));
+    writeFileSync(join(dir, "e2e", "tests", "d1.spec.ts"), GOOD);
+    writeFileSync(join(dir, "e2e", "tests", "d2.spec.ts"), GOOD.replace("[D1]", "[D2]"));
+    const steps: string[] = [];
+    const results = await runTests(dir, two, async (_d, args) => {
+      const line = args.join(" ");
+      if (line.includes("TRUNCATE")) steps.push("empty");
+      const file = line.match(/playwright test (\S+)/)?.[1];
+      if (file) {
+        steps.push(file);
+        const id = file.includes("d1") ? "[D1] a" : "[D2] b";
+        writeFileSync(join(dir, "e2e", "results.json"), JSON.stringify(report(run(id, "expected"))));
+      }
+      return { code: 0, output: "Changes applied" };
+    });
+    expect(steps).toEqual(["empty", "tests/d1.spec.ts", "empty", "tests/d2.spec.ts"]);
+    expect(results.map((r) => r.status)).toEqual(["pass", "pass"]);
+  });
   const project = (files: Record<string, string>) => {
     const dir = mkdtempSync(join(tmpdir(), "proj-"));
     mkdirSync(join(dir, "e2e", "tests"), { recursive: true });

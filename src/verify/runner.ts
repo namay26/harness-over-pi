@@ -2,7 +2,7 @@ import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join, relative } from "node:path";
 import { listFiles } from "../files.ts";
 import { compose } from "../sandbox/docker.ts";
-import { resetTestApp } from "../sandbox/testApp.ts";
+import { emptyTestTables, resetTestApp } from "../sandbox/testApp.ts";
 import type { Result, Spec } from "../types.ts";
 
 const TEST_FILE = /\.(spec|test)\.[cm]?[jt]s$/;
@@ -99,15 +99,27 @@ function discardRuleBreakers(e2eDir: string, results: Result[]): Result[] {
   });
 }
 
+/** Runs one test file against empty tables, so what one test saves cannot fail another. */
+async function runTestFile(dir: string, file: string, exec: typeof compose): Promise<Report> {
+  const reportFile = join(dir, "e2e", "results.json");
+  rmSync(reportFile, { force: true });
+  await emptyTestTables(dir, exec);
+  const { output } = await exec(
+    dir, ["run", "--rm", "-T", "e2e", "npx", "--no-install", "playwright", "test", file], { timeoutMs: 900_000 });
+  if (!existsSync(reportFile)) throw new Error(`The tests did not produce a report:\n${output.slice(-2000)}`);
+  return JSON.parse(readFileSync(reportFile, "utf8")) as Report;
+}
+
 /** Runs the saved tests; TypeScript, not the verifier, decides what passed. */
 export async function runTests(dir: string, spec: Spec, exec = compose): Promise<Result[]> {
   const e2eDir = join(dir, "e2e");
-  const reportFile = join(e2eDir, "results.json");
-  rmSync(reportFile, { force: true });
+  rmSync(join(e2eDir, "results.json"), { force: true });
   await ensureTestPackages(dir, exec);
   await resetTestApp(dir, exec);
-  const { output } = await exec(
-    dir, ["run", "--rm", "-T", "e2e", "npx", "--no-install", "playwright", "test"], { timeoutMs: 900_000 });
-  if (!existsSync(reportFile)) throw new Error(`The tests did not produce a report:\n${output.slice(-2000)}`);
-  return discardRuleBreakers(e2eDir, toResults(JSON.parse(readFileSync(reportFile, "utf8")), spec));
+  const reports: Report[] = [];
+  for (const { name } of testSources(e2eDir).filter((source) => source.isTest)) {
+    reports.push(await runTestFile(dir, name, exec));
+  }
+  const merged = { suites: reports.flatMap((r) => r.suites), errors: reports.flatMap((r) => r.errors ?? []) };
+  return discardRuleBreakers(e2eDir, toResults(merged, spec));
 }

@@ -9,6 +9,7 @@ import { Budget, BudgetExhausted } from "../budget.ts";
 import { config, type Role } from "../config.ts";
 import { isAllowed } from "../sandbox/guard.ts";
 import { RunLimits } from "./limits.ts";
+import { watchStall } from "./watchdog.ts";
 
 const REPO = fileURLToPath(new URL("../..", import.meta.url));
 const PI_HOME = join(REPO, ".pi-home");
@@ -40,6 +41,8 @@ export async function runWithFallback(driver: Driver, prompt: string, wait = sle
     await wait(30_000);
     await driver.useFallback();
     error = check(await driver.prompt("The last request was throttled. Continue the task where you left off."));
+  } else if (error?.startsWith("stalled")) {
+    error = check(await driver.prompt("The last request got no reply. Continue the task where you left off."));
   }
   if (error) throw new Error(`Model request failed: ${error.slice(0, 500)}`);
 }
@@ -211,8 +214,21 @@ export async function createRoleSession(o: RoleSessionOptions): Promise<RoleSess
       exhausted = undefined;
       capped = false;
       limits.reset();
-      await session.prompt(text);
+      let stalled = false;
+      const watch = watchStall(config.stallMs, () => {
+        stalled = true;
+        o.onTool?.("no reply from the model, cancelling the request");
+        void session.abort();
+      });
+      const unwatch = session.subscribe((event) => watch.see(event.type));
+      try {
+        await session.prompt(text);
+      } finally {
+        watch.stop();
+        unwatch();
+      }
       if (exhausted) throw exhausted;
+      if (stalled) return `stalled: no reply from the model for ${config.stallMs / 1000} seconds`;
       if (capped) {
         // Not a failure: the checks and tests judge whatever was done.
         o.onTool?.("stopped: this step reached its request limit");

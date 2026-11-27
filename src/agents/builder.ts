@@ -10,7 +10,7 @@ import { appLogsTool, describeSpec, fileBlocks } from "./shared.ts";
 import type { Agents } from "./types.ts";
 
 const PROMPT = readFileSync(new URL("./prompts/builder.md", import.meta.url), "utf8");
-const DEFAULT_TIMEOUT_S = 600;
+const DEFAULT_TIMEOUT_S = 300;
 // Sent with the first task: each file the model has to read itself costs one of the daily requests.
 const STARTER_FILES = [
   "package.json", "src/db/schema.ts", "src/db/index.ts", "src/app/layout.tsx", "src/app/page.tsx",
