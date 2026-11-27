@@ -66,13 +66,13 @@ export function createVerifierAgent(o: {
     }),
   ];
 
-  async function withSession<T>(work: (session: RoleSession) => Promise<T>): Promise<T> {
+  async function withSession<T>(work: (session: RoleSession) => Promise<T>, finished?: () => boolean): Promise<T> {
     mkdirSync(testsDir, { recursive: true });
     const session = await (o.createSession ?? createRoleSession)({
       role: "verifier", projectDir, root: projectDir, systemPrompt: PROMPT,
       readable: [join(projectDir, "app"), join(projectDir, "e2e")], writable: [testsDir],
       tools: ["read", "write", "edit", ...tools.map((t) => t.name)], customTools: tools,
-      resume: false, budget: o.budget, onTool: o.onTool,
+      resume: false, budget: o.budget, onTool: o.onTool, finished,
     });
     try {
       return await work(session);
@@ -82,18 +82,20 @@ export function createVerifierAgent(o: {
   }
 
   return {
-    writeTests: ({ spec, ids }) => withSession(async (session) => {
-      await resetTestApp(projectDir, exec);
-      const home = await snapshotPage(projectDir, "/", exec);
-      await session.run([
-        `Write tests for these deliverables: ${ids.join(", ")}.`,
-        describeSpec(spec),
-        `The home page right now:\n${home}`,
-        `The app source:\n${appSource(projectDir)}`,
-      ].join("\n\n"));
-      const left = missingTests(join(projectDir, "e2e"), spec).filter((id) => ids.includes(id));
-      if (left.length > 0) await session.run(`There is still no test for ${left.join(", ")}. Write them now.`);
-    }),
+    writeTests: ({ spec, ids }) => {
+      const left = () => missingTests(join(projectDir, "e2e"), spec).filter((id) => ids.includes(id));
+      return withSession(async (session) => {
+        await resetTestApp(projectDir, exec);
+        const home = await snapshotPage(projectDir, "/", exec);
+        await session.run([
+          `Write tests for these deliverables: ${ids.join(", ")}.`,
+          describeSpec(spec),
+          `The home page right now:\n${home}`,
+          `The app source:\n${appSource(projectDir)}`,
+        ].join("\n\n"));
+        if (left().length > 0) await session.run(`There is still no test for ${left().join(", ")}. Write them now.`);
+      }, () => left().length === 0);
+    },
 
     triage: ({ spec, failures }) => withSession(async (session) => {
       const before = hashFolder(testsDir);

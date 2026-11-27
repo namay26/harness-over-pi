@@ -18,6 +18,9 @@ export function lintTests(e2eDir: string): string[] {
     const problems: string[] = [];
     const bypass = body.match(BYPASS);
     if (bypass) problems.push(`${name}: test.${bypass[1]} is not allowed`);
+    if (/\bpage\.request\b|\bfetch\s*\(|\brequest\.(get|post|put|patch|delete)\b/.test(body)) {
+      problems.push(`${name}: calls the app's API directly; do everything through the page`);
+    }
     if (body.includes("@playwright/test")) problems.push(`${name}: import test and expect from "../fixtures"`);
     if (/\bnewContext\b/.test(body)) problems.push(`${name}: use the otherPage fixture for a second user`);
     if (isTest && !/\bexpect\s*[(.]/.test(body)) problems.push(`${name}: asserts nothing`);
@@ -53,8 +56,6 @@ const specsIn = (suite: Suite, titles = ""): ReportSpec[] => {
   ];
 };
 const plain = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, "").slice(0, 1500);
-const untestedAll = (spec: Spec, evidence: string): Result[] =>
-  spec.deliverables.map((d) => ({ id: d.id, status: "untested", evidence }));
 
 /** Turns a Playwright JSON report into one result per deliverable, matched by the [D<n>] title tag. */
 export function toResults(report: unknown, spec: Spec): Result[] {
@@ -87,12 +88,20 @@ export async function ensureTestPackages(dir: string, exec = compose): Promise<v
   if (code !== 0) throw new Error(`Could not install the test packages:\n${output.slice(-2000)}`);
 }
 
+/** Results from test files that break the rules are discarded, whatever Playwright said. */
+function discardRuleBreakers(e2eDir: string, results: Result[]): Result[] {
+  const problems = lintTests(e2eDir);
+  const sources = testSources(e2eDir);
+  return results.map((result) => {
+    const broken = problems.filter((problem) =>
+      sources.some((s) => problem.startsWith(`${s.name}:`) && (!s.isTest || s.body.includes(`[${result.id}]`))));
+    return broken.length ? { id: result.id, status: "untested", evidence: `Test not counted: ${broken.join("; ")}` } : result;
+  });
+}
+
 /** Runs the saved tests; TypeScript, not the verifier, decides what passed. */
 export async function runTests(dir: string, spec: Spec, exec = compose): Promise<Result[]> {
   const e2eDir = join(dir, "e2e");
-  const problems = lintTests(e2eDir);
-  if (problems.length > 0) return untestedAll(spec, `Tests not run:\n${problems.join("\n")}`);
-
   const reportFile = join(e2eDir, "results.json");
   rmSync(reportFile, { force: true });
   await ensureTestPackages(dir, exec);
@@ -100,5 +109,5 @@ export async function runTests(dir: string, spec: Spec, exec = compose): Promise
   const { output } = await exec(
     dir, ["run", "--rm", "-T", "e2e", "npx", "--no-install", "playwright", "test"], { timeoutMs: 900_000 });
   if (!existsSync(reportFile)) throw new Error(`The tests did not produce a report:\n${output.slice(-2000)}`);
-  return toResults(JSON.parse(readFileSync(reportFile, "utf8")), spec);
+  return discardRuleBreakers(e2eDir, toResults(JSON.parse(readFileSync(reportFile, "utf8")), spec));
 }

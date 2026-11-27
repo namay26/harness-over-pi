@@ -58,3 +58,13 @@ describe("separate read and write folders", () => {
     expect(isAllowed("src/../other.ts", root, within)).toBe(false);
   });
 });
+
+describe("guardExtension loop protection", () => {
+  it("ends the run when a refused call keeps coming", () => {
+    let handler!: (event: unknown) => { block?: boolean; terminate?: boolean } | undefined;
+    const pi = { on: (name: string, fn: typeof handler) => { if (name === "tool_call") handler = fn; } };
+    guardExtension({ root, budget: new Budget(join(root, "u.json"), 1), onExhausted() {} })(pi as never);
+    const attempt = () => handler({ toolName: "write", input: { path: "/etc/passwd" } });
+    expect([attempt()?.terminate, attempt()?.terminate, attempt()?.terminate]).toEqual([false, false, true]);
+  });
+});

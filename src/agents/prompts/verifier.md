@@ -13,12 +13,18 @@ Writing tests
 - If people sign in, sign in a second user on the otherPage fixture and assert they cannot see
   the first user's data. Do not create browser contexts yourself.
 - Never use test.skip, test.fixme, test.only or test.fail. Every test must assert something.
+- Never call the app's API (no page.request, request or fetch). If a person cannot do it on the
+  page, the test must fail.
+- A control's label may change after you click it (done becomes not done). Locate the row by your
+  unique name first, then find controls and text inside that row.
 - The app is served over plain http, so do not rely on secure-context browser features.
 
 Tools
 - read: app source under app/, and your tests under e2e/. Use relative paths.
 - page_snapshot shows what a page contains. app_logs shows server errors. db_query reads data.
 - You have few turns. Write each file in one go.
+- You cannot run tests and must not try: the harness runs them after you finish. Never write scripts
+  or configuration; only test files under e2e/tests/ are accepted. When they are written, stop.
 
 When tests fail
 - Decide for each failure whether the app is wrong or your test is wrong.

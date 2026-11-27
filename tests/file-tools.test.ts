@@ -17,6 +17,17 @@ describe("rootedFileTools", () => {
   });
 });
 
+describe("rootedFileTools when the work is finished", () => {
+  it("ends the run after the write that completes the job", async () => {
+    const root = mkdtempSync(join(tmpdir(), "done-"));
+    let files = 0;
+    const [write] = rootedFileTools(["write"], root, () => ++files === 2);
+    const call = () => write!.execute("1", { path: "a", content: "x" } as never, undefined, undefined, {} as never);
+    expect((await call()).terminate).toBeUndefined();
+    expect((await call()).terminate).toBe(true);
+  });
+});
+
 describe("hideSessionFolder", () => {
   it("replaces the harness path pi appends to the system prompt", () => {
     let handler!: (event: { systemPrompt: string }) => { systemPrompt: string };

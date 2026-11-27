@@ -88,13 +88,16 @@ describe("runTests", () => {
     return dir;
   };
 
-  it("runs nothing and reports why when the tests break the rules", async () => {
-    let calls = 0;
-    const results = await runTests(project({ "a.spec.ts": `${GOOD}test.only("x");` }), two,
-      async () => { calls++; return { code: 0, output: "" }; });
-    expect(calls).toBe(0);
-    expect(results.map((r) => r.status)).toEqual(["untested", "untested"]);
-    expect(results[0]!.evidence).toContain("only");
+  it("does not count a test that breaks the rules, but still runs the others", async () => {
+    const dir = project({ "d1.spec.ts": GOOD, "d2.spec.ts": `${GOOD.replace("[D1]", "[D2]")}await page.request.post("/x");` });
+    const results = await runTests(dir, two, async (_d, args) => {
+      if (args.includes("playwright")) {
+        writeFileSync(join(dir, "e2e", "results.json"), JSON.stringify(report(run("[D1] a", "expected"), run("[D2] b", "expected"))));
+      }
+      return { code: 0, output: "Changes applied" };
+    });
+    expect(results.map((r) => r.status)).toEqual(["pass", "untested"]);
+    expect(results[1]!.evidence).toContain("API");
   });
   it("never reads a report left over from an earlier run", async () => {
     const dir = project({ "a.spec.ts": GOOD });

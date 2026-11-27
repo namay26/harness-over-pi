@@ -41,6 +41,7 @@ describe("verifier agent", () => {
     expect(v.options().tools).toEqual(["read", "write", "edit", "page_snapshot", "app_logs", "db_query"]);
     expect(v.prompts[0]).toContain("APP_SOURCE_MARKER");
     expect(v.prompts[0]).toContain("button 'Add'");
+    expect(v.options().finished?.()).toBe(true);
   });
   it("reminds once about deliverables left without a test", async () => {
     const v = verifierWith(() => {});
