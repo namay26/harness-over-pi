@@ -104,6 +104,15 @@ export function rootedFileTools(names: string[], root: string): ToolDefinition<a
   });
 }
 
+/** pi appends the session folder to the prompt; show the agent its own folder instead. */
+export function hideSessionFolder(shown: string) {
+  return (pi: ExtensionAPI) => {
+    pi.on("before_agent_start", (event) => ({
+      systemPrompt: event.systemPrompt.replace(/<cwd>[\s\S]*?<\/cwd>/, `<cwd>\n${shown}\n</cwd>`),
+    }));
+  };
+}
+
 export interface RoleSessionOptions {
   role: Role;
   projectDir: string;
@@ -145,7 +154,7 @@ export async function createRoleSession(o: RoleSessionOptions): Promise<RoleSess
     cwd: home, agentDir: PI_HOME, settingsManager,
     noExtensions: true, noSkills: true, noContextFiles: true, noPromptTemplates: true, noThemes: true,
     systemPrompt: o.systemPrompt,
-    extensionFactories: [guardExtension({
+    extensionFactories: [hideSessionFolder(o.containerRoot ?? "."), guardExtension({
       root: o.root, readable: o.readable, writable: o.writable, containerRoot: o.containerRoot, budget: o.budget, onExhausted: (e) => { exhausted = e; },
     })],
   });

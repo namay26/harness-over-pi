@@ -1,4 +1,5 @@
 import { type BashOperations, createBashToolDefinition } from "@earendil-works/pi-coding-agent";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Budget } from "../budget.ts";
@@ -63,11 +64,13 @@ export function createBuilderAgent(o: {
       }
       // The baseline outlives an interrupted run, so work done before the interruption still counts.
       const marker = join(o.projectDir, ".builder", "build-baseline");
-      const interrupted = existsSync(marker);
-      const before = interrupted ? readFileSync(marker, "utf8") : sourceHash();
+      const job = createHash("sha256").update(JSON.stringify([spec, changes])).digest("hex");
+      const saved = existsSync(marker) ? readFileSync(marker, "utf8").split("\n") : [];
+      const interrupted = saved[0] === job;
+      const before = interrupted ? saved[1]! : sourceHash();
       if (!interrupted) {
         mkdirSync(dirname(marker), { recursive: true });
-        writeFileSync(marker, before);
+        writeFileSync(marker, `${job}\n${before}`);
       }
       const task = changes
         ? `Change the existing app. What changed:\n${changes}\n\nThe full spec now:\n${describeSpec(spec)}\n\nCurrent files:\n`

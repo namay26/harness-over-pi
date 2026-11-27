@@ -60,7 +60,7 @@ try {
   show("builder");
   const system = JSON.stringify(bodies[0]!.messages[0]!.content);
   console.log("system prompt chars:", system.length, "| mentions harness folder:", system.includes(".builder"));
-  console.log(system.slice(-400));
+  console.log(system.slice(-80));
 
   script = [
     ["write", { path: "e2e/tests/d1.spec.ts", content: 'import { expect, test } from "../fixtures";\ntest("[D1] x", async () => { expect(1).toBe(1); });\n' }],

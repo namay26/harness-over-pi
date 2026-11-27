@@ -95,6 +95,29 @@ describe("builder agent", () => {
     expect(b.prompts[0]).toContain("Change the existing app");
     expect(b.prompts[0]).toContain("added D4: export");
   });
+  it("does not resume an interrupted build once the spec has changed", async () => {
+    const dir = projectDir();
+    mkdirSync(join(dir, "app", "src"), { recursive: true });
+    const prompts: string[] = [];
+    let interrupt = true;
+    const build = createBuilderAgent({
+      projectDir: dir, budget: new Budget(`${dir}/usage.json`, 50),
+      exec: async () => ({ code: 0, output: "" }),
+      createSession: async () => ({
+        sessionFile: undefined, dispose() {}, lastText: () => "",
+        async run(prompt) {
+          prompts.push(prompt);
+          writeFileSync(join(dir, "app", "src", "page.tsx"), `v${prompts.length}`);
+          if (interrupt) throw new Error("request limit");
+        },
+      }),
+    });
+    await expect(build({ spec: spec(), failure: null, changes: null })).rejects.toThrow();
+    interrupt = false;
+    await build({ spec: spec(), failure: null, changes: "added D2: export" });
+    expect(prompts[1]).toContain("added D2: export");
+    expect(prompts[1]).not.toContain("interrupted");
+  });
   it("reminds once, then fails, if it ends without changing the app", async () => {
     const b = builderWith([false, false]);
     await expect(b.build({ spec: spec(), failure: null, changes: null })).rejects.toThrow("without changing the app");
