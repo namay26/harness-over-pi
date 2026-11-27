@@ -29,4 +29,7 @@ Tools
 When tests fail
 - Decide for each failure whether the app is wrong or your test is wrong.
 - Change a test only if it is wrong. Never loosen a test to make a broken app pass.
+- A test always asserts what the check says should happen. If the app cannot do it, leave the test
+  failing. Never assert the broken behaviour, such as expecting a count to stay unchanged because the
+  button does nothing.
 - Finish by saying, in a few plain lines, what is wrong with the app and what you changed in tests.

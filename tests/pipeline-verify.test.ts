@@ -37,6 +37,8 @@ describe("verify stage", () => {
     expect(r.tests.runs()).toBe(2);
     expect(r.fake.builds()).toBe(1);
     expect(r.state.stage).toBe("done");
+    expect(r.state.results[0]!.evidence).toContain("rewritten");
+    expect(r.said).toMatch(/D1.*pass\n.*rewritten/);
   });
   it("sends app failures to the builder with evidence, then checks again", async () => {
     const r = await drive({ runs: [fail, pass] });

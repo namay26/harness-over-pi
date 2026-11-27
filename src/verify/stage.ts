@@ -15,7 +15,17 @@ export async function verifyDeliverables(deps: Deps, spec: Spec): Promise<Result
 
   const { testsChanged, notes } = await deps.agents.triage({ spec, failures });
   if (notes) deps.ui.say(`Verifier: ${notes}`);
-  return testsChanged ? deps.tests.run(deps.dir, spec) : results;
+  return testsChanged ? flagRewritten(results, await deps.tests.run(deps.dir, spec)) : results;
+}
+
+/** A pass obtained by changing the test is weaker evidence, so the report says so. */
+function flagRewritten(before: Result[], after: Result[]): Result[] {
+  return after.map((result) => {
+    const failedFirst = before.some((r) => r.id === result.id && r.status !== "pass");
+    return failedFirst && result.status === "pass"
+      ? { ...result, evidence: "Passed only after the verifier rewrote its test. Check it by hand." }
+      : result;
+  });
 }
 
 export function renderResults(spec: Spec, results: Result[]): string {
