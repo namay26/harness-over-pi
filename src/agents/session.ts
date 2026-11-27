@@ -89,6 +89,21 @@ export function guardExtension(o: {
   };
 }
 
+const FILE_TOOL_FACTORIES: Record<string, (root: string) => ToolDefinition<any, any>> = {
+  read: createReadToolDefinition,
+  write: createWriteToolDefinition,
+  edit: createEditToolDefinition,
+};
+
+/** pi resolves paths from the session's cwd, so each file tool is handed `root` as its cwd. */
+export function rootedFileTools(names: string[], root: string): ToolDefinition<any, any>[] {
+  return names.flatMap((name) => {
+    const tool = FILE_TOOL_FACTORIES[name]?.(root);
+    if (!tool) return [];
+    return { ...tool, execute: (id, params, signal, update, ctx) => tool.execute(id, params, signal, update, { ...ctx, cwd: root }) };
+  });
+}
+
 export interface RoleSessionOptions {
   role: Role;
   projectDir: string;
@@ -114,7 +129,7 @@ export async function createRoleSession(o: RoleSessionOptions): Promise<RoleSess
   mkdirSync(PI_HOME, { recursive: true });
 
   const modelRuntime = await ModelRuntime.create({
-    modelsPath: join(REPO, "config/models.json"),
+    modelsPath: config.modelsFile ?? join(REPO, "config/models.json"),
     modelsStorePath: join(PI_HOME, "models-store.json"),
     authPath: join(PI_HOME, "auth.json"),
   });
@@ -136,12 +151,7 @@ export async function createRoleSession(o: RoleSessionOptions): Promise<RoleSess
   });
   await resourceLoader.reload();
 
-  const fileTools: Record<string, () => ToolDefinition<any, any>> = {
-    read: () => createReadToolDefinition(o.root),
-    write: () => createWriteToolDefinition(o.root),
-    edit: () => createEditToolDefinition(o.root),
-  };
-  const customTools = [...o.tools.flatMap((name) => fileTools[name]?.() ?? []), ...o.customTools];
+  const customTools = [...rootedFileTools(o.tools, o.root), ...o.customTools];
 
   const { session } = await createAgentSession({
     cwd: home, agentDir: PI_HOME, modelRuntime, model: model(config.models[o.role]),
