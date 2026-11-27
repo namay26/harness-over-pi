@@ -15,7 +15,8 @@ process.env.WEB_PORT ??= "3001";
 const source = resolve("workspaces", name);
 const copy = resolve("workspaces", `${name}-broken`);
 rmSync(copy, { recursive: true, force: true });
-cpSync(source, copy, { recursive: true, filter: (path) => !path.endsWith("/.next") });
+// verbatimSymlinks keeps node_modules/.bin links relative, so they still work in the copy.
+cpSync(source, copy, { recursive: true, verbatimSymlinks: true, filter: (path) => !path.endsWith("/.next") });
 try {
   const target = join(copy, "app", file);
   const original = readFileSync(target, "utf8");
